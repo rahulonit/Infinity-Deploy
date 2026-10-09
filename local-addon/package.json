@@ -1,0 +1,22 @@
+{
+  "name": "infinity-deploy-local-addon",
+  "productName": "Infinity Deploy",
+  "slug": "infinity-deploy",
+  "version": "1.0.4",
+  "description": "Safely synchronize WordPress themes, content, media, databases, and site files between Local and a connected live site.",
+  "author": "Infinity",
+  "license": "GPL-2.0-or-later",
+  "bgColor": "#6549ef",
+  "icon": "icon.svg",
+  "main": "lib/main.js",
+  "renderer": "lib/renderer.js",
+  "engines": {
+    "local-by-flywheel": ">=9.0.0"
+  },
+  "keywords": [
+    "local-addon",
+    "wordpress",
+    "deployment",
+    "infinity"
+  ]
+}
