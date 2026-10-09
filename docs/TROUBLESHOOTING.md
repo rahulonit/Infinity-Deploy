@@ -53,7 +53,9 @@ Use Local add-on 1.0.3 or later; earlier streaming uploads could declare a multi
 
 ### HTTP 413 / `package_too_large`
 
-Increase the Bridge package limit and every smaller upstream/PHP limit, then restart the applicable service. Split full migration components where possible. The largest individual component ZIP—not total site size—must fit.
+Increase the **destination** Bridge limit under **WordPress → Tools → Infinity Deploy → Maximum uploaded package size (MB)** and every smaller upstream/PHP limit, then restart the applicable service. Configure both Local and Live endpoints before testing both directions. Existing installations upgraded from an older Bridge may retain their previous 20 MB setting even though new installations default to 200 MB. Split full migration components where possible. The largest individual component ZIP—not total site size—must fit.
+
+For example, a 148 MB uploads ZIP requires a destination Bridge limit of at least 148 MB; 200 MB leaves reasonable packaging headroom. A successful connection test only validates authentication and compatibility—it does not prove that a later migration package fits the configured upload limits.
 
 ### Ten-minute timeout
 

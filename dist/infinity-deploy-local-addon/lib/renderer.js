@@ -257,7 +257,7 @@ function infinityDeployRenderer(context) {
   function stat(value, label) { return h('span', null, h('strong', null, String(value)), label); }
 
   function successMessage(action, result) {
-    if (action === 'test') return `Connected. Local ${result.local.wordpress_version}; Live ${result.live.wordpress_version}; live theme ${result.live.active_theme.version}.`;
+    if (action === 'test') return `Connected. Local WP ${result.local.wordpress_version} / Bridge ${result.local.bridge_version}; Live WP ${result.live.wordpress_version} / Bridge ${result.live.bridge_version}; live theme ${result.live.active_theme.version}.`;
     if (action === 'preview') return `Comparison complete: ${result.summary.new} new and ${result.summary.changed} changed content items.`;
     if (action === 'theme') return `Theme ${result.deployment.theme.version} deployed and health checks completed.`;
     if (action === 'content') return `${result.content.length} content items and ${result.media.length} media items processed.`;

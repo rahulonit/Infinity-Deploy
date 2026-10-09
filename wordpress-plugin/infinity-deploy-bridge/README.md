@@ -1,6 +1,6 @@
 # Infinity Deploy Bridge
 
-Version 1.0.3. Install this WordPress plugin on both endpoints used by Infinity Deploy Local add-on 1.0.4.
+Version 1.0.3. Install this WordPress plugin on both endpoints used by Infinity Deploy Local add-on 1.0.5.
 
 After activation, open **Tools → Infinity Deploy**, configure the allowed theme/content types, enable deployments, and connect with a dedicated WordPress Application Password. Do not use a primary account password.
 

@@ -9,7 +9,8 @@ const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 
 const zlib = require('zlib');
-const ADDON_VERSION = '1.0.4';
+const ADDON_VERSION = '1.0.5';
+const MIN_FULL_SITE_BRIDGE_VERSION = '1.0.3';
 
 const CHANNELS = [
   'infinity-deploy:get-config',
@@ -265,8 +266,13 @@ function infinityDeployMain(context) {
     const clean = normalizeConfig(config, site);
     const { includeDb = true, includeUploads = true, includePlugins = true, preserveUsers = false } = options;
 
-    notifyProgress(_event, 'Connecting to Live WordPress site...', 5);
-    await apiJson(clean, 'live', 'GET', '/status');
+    notifyProgress(_event, 'Validating Local and Live Bridge versions...', 5);
+    const [localStatus, liveStatus] = await Promise.all([
+      apiJson(clean, 'local', 'GET', '/status'),
+      apiJson(clean, 'live', 'GET', '/status'),
+    ]);
+    assertFullSiteCompatibility(localStatus, 'Local');
+    assertFullSiteCompatibility(liveStatus, 'Live');
 
     let dbResult = null;
     let siteResult = [];
@@ -352,8 +358,13 @@ function infinityDeployMain(context) {
     const clean = normalizeConfig(config, site);
     const { includeDb = true, includeUploads = true, includePlugins = true, preserveUsers = true } = options;
 
-    notifyProgress(_event, 'Validating Live environment...', 5);
-    await apiJson(clean, 'live', 'GET', '/status');
+    notifyProgress(_event, 'Validating Local and Live Bridge versions...', 5);
+    const [localStatus, liveStatus] = await Promise.all([
+      apiJson(clean, 'local', 'GET', '/status'),
+      apiJson(clean, 'live', 'GET', '/status'),
+    ]);
+    assertFullSiteCompatibility(localStatus, 'Local');
+    assertFullSiteCompatibility(liveStatus, 'Live');
 
     // 1. Safety snapshot of Live database FIRST before touching anything!
     notifyProgress(_event, 'Creating safety snapshot of Live database...', 12);
@@ -514,7 +525,30 @@ function normalizeUrl(value) {
 
   // Keep a WordPress subdirectory (for example, example.com/portfolio) intact.
   url.pathname = url.pathname.replace(/\/+$/, '') || '/'; url.search = ''; url.hash = '';
-  return url.toString().replace(/\/$/, '');
+	return url.toString().replace(/\/$/, '');
+}
+
+function assertFullSiteCompatibility(status, label) {
+  const actual = status && status.bridge_version ? String(status.bridge_version) : 'unknown';
+  if (!versionAtLeast(actual, MIN_FULL_SITE_BRIDGE_VERSION)) {
+    throw new Error(`${label} is running Infinity Deploy Bridge ${actual}. Full-site migration requires Bridge ${MIN_FULL_SITE_BRIDGE_VERSION} or later. Update the Bridge on both sites, then test both connections again.`);
+  }
+  if (!status.deployment_enabled) {
+    throw new Error(`${label} Infinity Deploy deployments are disabled. Enable them under WordPress → Tools → Infinity Deploy.`);
+  }
+}
+
+function versionAtLeast(actual, minimum) {
+  if (!/^\d+(\.\d+){1,2}$/.test(actual)) return false;
+  const left = actual.split('.').map(Number);
+  const right = minimum.split('.').map(Number);
+  for (let index = 0; index < Math.max(left.length, right.length); index++) {
+    const a = left[index] || 0;
+    const b = right[index] || 0;
+    if (a > b) return true;
+    if (a < b) return false;
+  }
+  return true;
 }
 
 function endpoint(config, target, apiPath) {

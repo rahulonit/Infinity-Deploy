@@ -1,8 +1,8 @@
 # Infinity Deploy Local add-on
 
-Version 1.0.4. This is the Local desktop half of Infinity Deploy. It adds an Infinity Deploy panel to a selected site, saves per-site connections, compares content, orchestrates package transfers, and displays progress/rollback controls.
+Version 1.0.5. This is the Local desktop half of Infinity Deploy. It adds an Infinity Deploy panel to a selected site, saves per-site connections, compares content, orchestrates package transfers, and displays progress/rollback controls.
 
-It requires Local 9.0+, the matching Infinity Deploy Bridge on both WordPress endpoints, and dedicated WordPress Application Passwords. Production URLs must use HTTPS.
+It requires Local 9.0+, Infinity Deploy Bridge 1.0.3+ on both WordPress endpoints for full migrations, and dedicated WordPress Application Passwords. Production URLs must use HTTPS.
 
 ## Install
 
