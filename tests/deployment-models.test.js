@@ -28,7 +28,7 @@ test('file comparison never claims missing hash is unchanged',()=>{
  ]});
  assert.equal(result.files.find(x=>x.path.endsWith('style.css')).state,'changed');
  assert.equal(result.files.find(x=>x.path.endsWith('large.bin')).state,'unverified');
- assert.equal(result.files.find(x=>x.path.endsWith('other.php')).state,'live-only');
+ assert.equal(result.files.some(x=>x.path.endsWith('other.php')),false);
  assert.equal(result.partial,true);
 });
 
@@ -37,4 +37,9 @@ test('preflight blocks disabled Bridge and preserves advisory disk-space warning
  assert.equal(preflight(status,status,'1.0.4',['themes']).ok,true);
  assert.equal(preflight(status,{...status,deployment_enabled:false},'1.0.4',['themes']).ok,false);
  assert.equal(preflight(status,{...status,free_disk_bytes:null},'1.0.4',['themes']).ok,true);
+});
+
+test('partial destination scan never incorrectly labels absent files new',()=>{
+ const result=compareFiles({files:[{path:'wp-content/themes/app/a.css',size:8,sha256:'x'}]}, {files:[],truncated:true});
+ assert.equal(result.files[0].state,'unverified');
 });
