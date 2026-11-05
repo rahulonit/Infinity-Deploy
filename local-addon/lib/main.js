@@ -389,6 +389,8 @@ function infinityDeployMain(context) {
     let dbResult = null;
     let siteResult = [];
 
+    // Preserve recovery identifiers when any subsequent production step fails.
+    try {
     // 2. Files Sync (Uploads, Plugins, Themes)
 
     for (let i = 0; i < components.length; i++) {
@@ -448,6 +450,9 @@ function infinityDeployMain(context) {
     notifyProgress(_event, 'Full site deployment completed successfully!', 100);
 
     return { ok: true, safetySnapshot: safetySnapshot.snapshot, liveFilesBackup: liveFilesBackup.file_key, db: dbResult, siteFiles: siteResult, maintenance };
+    } catch (error) {
+      throw new Error(`${error.message} Recovery artifacts on Live: database snapshot ${safetySnapshot.snapshot.key}; site-file ZIP ${liveFilesBackup.file_key}. File recovery is an overlay and does not remove new files.`);
+    }
   });
 
   ipcMain.handle('infinity-deploy:get-db-snapshots', async (_event, site, config) => {
