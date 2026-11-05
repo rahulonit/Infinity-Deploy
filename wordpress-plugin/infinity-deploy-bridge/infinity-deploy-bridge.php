@@ -26,6 +26,7 @@ require_once INFINITY_DEPLOY_PATH . 'includes/class-infinity-deploy-content.php'
 require_once INFINITY_DEPLOY_PATH . 'includes/class-infinity-deploy-database.php';
 require_once INFINITY_DEPLOY_PATH . 'includes/class-infinity-deploy-safety.php';
 require_once INFINITY_DEPLOY_PATH . 'includes/class-infinity-deploy-site-pack.php';
+require_once INFINITY_DEPLOY_PATH . 'includes/class-infinity-deploy-transfer.php';
 require_once INFINITY_DEPLOY_PATH . 'includes/class-infinity-deploy-api.php';
 require_once INFINITY_DEPLOY_PATH . 'includes/class-infinity-deploy-admin.php';
 
