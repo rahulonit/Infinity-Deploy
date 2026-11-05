@@ -1,0 +1,31 @@
+name: Hardening checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  node-hardening:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: JavaScript syntax
+        run: |
+          node --check local-addon/lib/main.js
+          node --check local-addon/lib/renderer.js
+      - name: Hardening tests
+        run: node --test tests/*.test.js
+
+  php-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '7.4'
+      - name: PHP syntax checks
+        run: find wordpress-plugin/infinity-deploy-bridge -name '*.php' -print0 | xargs -0 -n1 php -l
