@@ -52,8 +52,8 @@ function infinityDeployRenderer(context) {
       };
     }, []);
 
-    const update = (key, value) => setConfig((current) => Object.assign({}, current, { [key]: value }));
-    const updateFullSiteOpt = (key, value) => setFullSiteOptions((current) => Object.assign({}, current, { [key]: value }));
+    const update = (key, value) => { setPreflightReport(null); setFileDiff(null); setConfig((current) => Object.assign({}, current, { [key]: value })); };
+    const updateFullSiteOpt = (key, value) => { setPreflightReport(null); setFileDiff(null); setFullSiteOptions((current) => Object.assign({}, current, { [key]: value })); };
 
     const run = async (action, callback) => {
       setBusy(action); setMessage(null); setProgress({ message: 'Starting...', percent: 5 });
@@ -296,7 +296,13 @@ function infinityDeployRenderer(context) {
             h('small', null, `(${item.type}) · ${item.fields && item.fields.length ? item.fields.join(', ') : 'metadata'} · source ${String(item.localHash || '').slice(0, 10)} → live ${String(item.remoteHash || 'none').slice(0, 10)}`)
           )
         );
-      }))
+      })),
+      data.media && data.media.length > 0 && h('details', null,
+        h('summary', null, `Media comparison (${data.media.length} records)`),
+        h('ul', null, ...data.media.map(m => h('li', { key: m.uuid },
+          `${m.state}: ${m.filename} · source ${String(m.localHash || '').slice(0, 10)} · live ${String(m.remoteHash || 'none').slice(0, 10)}`
+        )))
+      )
     );
   }
 
