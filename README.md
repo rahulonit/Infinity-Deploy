@@ -23,6 +23,7 @@ Current components:
 - Splits full-site upload packages into checksummed 4 MiB chunks, with retry from the server-reported offset.
 - Saves local operation checkpoints; exposes cooperative cancellation and configurable HTTP timeouts.
 - Supports configurable critical health-check paths (homepage and REST API by default).
+- Offers deployment preflight checks, content/media and bounded file comparisons, operation recovery guidance, and a structured Live audit log viewer.
 
 ## Requirements
 
@@ -75,6 +76,8 @@ The build validates JavaScript, JSON, and PHP (when PHP CLI is available), stage
 - Preserve Users/Customers is enabled by default. It keeps the destination `users` and `usermeta` tables instead of replacing them with the source tables.
 - Infinity Deploy snapshots are an additional recovery layer, not a replacement for a host-level backup.
 - Uploads can resume after recoverable request errors within a running operation, but full migration **does not automatically resume after restarting Local**; interrupted operations require manual assessment before retrying. Downloads currently restart on retry, and in-flight database imports cannot be aborted safely.
+- File comparisons scan up to 1,200 included paths per side and SHA-256 hash files up to 5 MiB. A truncated scan or missing digest is marked partial/unverified, and file previews are not a filesystem rollback plan.
+- A passing preflight is required by the Local UI before a full Live push; the preflight is advisory and does not replace staging validation or backups.
 
 ## License
 
