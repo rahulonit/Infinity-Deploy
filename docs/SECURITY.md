@@ -20,7 +20,7 @@ Infinity Deploy is still a privileged deployment tool. A compromised administrat
 
 Saved connections are stored in Local’s Electron user-data directory at `infinity-deploy/connections.json`. The file is written with owner-only mode `0600` where the OS supports POSIX permissions.
 
-When Electron `safeStorage` encryption is available, Application Passwords are encrypted with the operating system’s credential protection. If it is unavailable, the add-on falls back to base64 encoding. Base64 is not encryption. On such a system, avoid saving long-lived credentials, secure the OS account/disk, and revoke Application Passwords after use.
+When Electron `safeStorage` encryption is available, Application Passwords are encrypted with the operating system’s credential protection. If it is unavailable, the add-on does not persist new Application Passwords to disk. Passwords remain in the current Local process memory and must be re-entered after restarting Local. Legacy base64 or plaintext saved passwords are no longer loaded; re-enter these secrets and save the connection to replace legacy values. Encryption-protected saved passwords continue to work when Electron secure storage is available.
 
 Credentials are sent only to the configured Local/Live hosts. They are not included in Bridge audit logs.
 
@@ -53,7 +53,7 @@ Backups can contain source code and complete databases. Protect filesystem backu
 
 ## Known boundaries
 
-- Full file transfers are not atomic and are not rolled back by database restoration.
+- Full file transfers are not atomic and are not rolled back by database restoration. Before a full production push, the add-on now also requires a Live site-file ZIP covering the selected uploads/plugins and themes. Its server-side `file_key` is retained for recovery, but importing that ZIP is an overlay, not a full rollback: newly created destination files will remain. Keep a host-level full-filesystem backup for destructive deployments.
 - A safety snapshot depends on the same WordPress/database/filesystem environment; host-level backups provide stronger disaster recovery.
 - Local HTTP traffic is unencrypted. Do not expose a Local site to an untrusted network.
 - Only `/` is critical in the default health policy. Customize critical paths for checkout, authentication, APIs, or other business-critical routes.

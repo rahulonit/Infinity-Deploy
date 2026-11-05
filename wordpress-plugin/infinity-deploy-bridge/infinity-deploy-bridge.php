@@ -3,7 +3,7 @@
  * Plugin Name: Infinity Deploy Bridge
  * Plugin URI:  https://rahul.graphics
  * Description: Secure deployment bridge for Infinity Deploy. Supports guarded theme, content, media, database, and site-file synchronization with backups and rollback.
- * Version:     1.0.3
+ * Version:     1.0.4
  * Author:      Infinity
  * Author URI:  https://rahul.graphics
  * License:     GPL-2.0-or-later
@@ -16,7 +16,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'INFINITY_DEPLOY_VERSION', '1.0.3' );
+define( 'INFINITY_DEPLOY_VERSION', '1.0.4' );
 define( 'INFINITY_DEPLOY_FILE', __FILE__ );
 define( 'INFINITY_DEPLOY_PATH', plugin_dir_path( __FILE__ ) );
 define( 'INFINITY_DEPLOY_URL', plugin_dir_url( __FILE__ ) );
@@ -26,6 +26,8 @@ require_once INFINITY_DEPLOY_PATH . 'includes/class-infinity-deploy-content.php'
 require_once INFINITY_DEPLOY_PATH . 'includes/class-infinity-deploy-database.php';
 require_once INFINITY_DEPLOY_PATH . 'includes/class-infinity-deploy-safety.php';
 require_once INFINITY_DEPLOY_PATH . 'includes/class-infinity-deploy-site-pack.php';
+require_once INFINITY_DEPLOY_PATH . 'includes/class-infinity-deploy-file-manifest.php';
+require_once INFINITY_DEPLOY_PATH . 'includes/class-infinity-deploy-transfer.php';
 require_once INFINITY_DEPLOY_PATH . 'includes/class-infinity-deploy-api.php';
 require_once INFINITY_DEPLOY_PATH . 'includes/class-infinity-deploy-admin.php';
 

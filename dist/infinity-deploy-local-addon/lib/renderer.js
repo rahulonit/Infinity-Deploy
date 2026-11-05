@@ -12,9 +12,14 @@ function infinityDeployRenderer(context) {
   function InfinityDeployPanel({ site }) {
     const [config, setConfig] = React.useState(null);
     const [busy, setBusy] = React.useState('');
+    const [lastOperation, setLastOperation] = React.useState(null);
     const [progress, setProgress] = React.useState(null);
     const [message, setMessage] = React.useState(null);
     const [preview, setPreview] = React.useState(null);
+    const [preflightReport, setPreflightReport] = React.useState(null);
+    const [fileDiff, setFileDiff] = React.useState(null);
+    const [auditLogs, setAuditLogs] = React.useState([]);
+    const [showAllDiffs, setShowAllDiffs] = React.useState(false);
     const [selectedUuids, setSelectedUuids] = React.useState([]);
     const [backups, setBackups] = React.useState([]);
 
@@ -30,6 +35,7 @@ function infinityDeployRenderer(context) {
       let active = true;
       ipc.invoke('infinity-deploy:get-config', site).then((saved) => {
         if (active) setConfig(saved);
+        ipc.invoke('infinity-deploy:get-operation', site).then(op => { if (active) setLastOperation(op); }).catch(() => {});
       }).catch((error) => setMessage({ type: 'error', text: error.message }));
       return () => { active = false; };
     }, [site.id]);
@@ -46,8 +52,8 @@ function infinityDeployRenderer(context) {
       };
     }, []);
 
-    const update = (key, value) => setConfig((current) => Object.assign({}, current, { [key]: value }));
-    const updateFullSiteOpt = (key, value) => setFullSiteOptions((current) => Object.assign({}, current, { [key]: value }));
+    const update = (key, value) => { setPreflightReport(null); setFileDiff(null); setConfig((current) => Object.assign({}, current, { [key]: value })); };
+    const updateFullSiteOpt = (key, value) => { setPreflightReport(null); setFileDiff(null); setFullSiteOptions((current) => Object.assign({}, current, { [key]: value })); };
 
     const run = async (action, callback) => {
       setBusy(action); setMessage(null); setProgress({ message: 'Starting...', percent: 5 });
@@ -62,6 +68,7 @@ function infinityDeployRenderer(context) {
         setMessage({ type: 'error', text: `${error.message}${error.code ? ` (${error.code})` : ''}` });
         return null;
       } finally {
+        ipc.invoke('infinity-deploy:get-operation', site).then(setLastOperation).catch(() => {});
         setBusy(''); setProgress(null);
       }
     };
@@ -69,6 +76,13 @@ function infinityDeployRenderer(context) {
     if (!config) return h('div', { className: 'infinity-deploy-panel' }, 'Loading Infinity Deploy…');
 
     const test = () => run('test', () => ipc.invoke('infinity-deploy:test', site, config));
+    const checkPreflight = () => run('preflight', () => ipc.invoke('infinity-deploy:preflight', site, config, fullSiteOptions)).then(result => { if (result) setPreflightReport(result); });
+    const compareFiles = () => run('files', () => ipc.invoke('infinity-deploy:compare-files', site, config, fullSiteOptions)).then(result => { if (result) setFileDiff(result); });
+    const refreshLogs = () => run('logs', async () => {
+      const response = await ipc.invoke('infinity-deploy:get-audit-logs', site, config);
+      setAuditLogs(response.logs || []);
+      return response;
+    });
     const compare = async () => {
       const result = await run('preview', () => ipc.invoke('infinity-deploy:preview', site, config));
       if (result) {
@@ -112,6 +126,7 @@ function infinityDeployRenderer(context) {
     };
 
     const pushFullSite = () => {
+      if (!preflightReport || !preflightReport.ok) { setMessage({ type: 'error', text: 'Run a passing preflight check before deploying to production.' }); return; }
       if (!window.confirm(`🚨 DEPLOY ENTIRE SITE TO LIVE (${config.liveUrl})?\n\nThis will upload your Local database and files to PRODUCTION.\nAn automatic pre-deployment safety snapshot will be created on the live server before import.\n\nProceed with production deployment?`)) return;
       run('push-full', () => ipc.invoke('infinity-deploy:push-full-site', site, config, fullSiteOptions)).then((res) => {
         if (res && res.safetySnapshot) {
@@ -140,14 +155,24 @@ function infinityDeployRenderer(context) {
         h('span', { className: 'infinity-deploy-logo', 'aria-hidden': 'true' }, '∞'),
         h('div', null, h('h3', null, 'Infinity Deploy'), h('p', null, 'Selective & full site deployments with database search-replace.'))
       ),
-      busy && progress && h('div', { className: 'infinity-deploy-progress' },
+      busy && progress && h('div', { className: 'infinity-deploy-progress', role: 'status', 'aria-live': 'polite' },
         h('div', { className: 'infinity-deploy-progress-bar', style: { width: `${progress.percent || 15}%` } }),
         h('div', { className: 'infinity-deploy-progress-label' },
           h('strong', null, 'Progress: '),
           progress.message || 'Processing...'
         )
       ),
-      message && h('div', { className: `infinity-deploy-message is-${message.type}`, role: message.type === 'error' ? 'alert' : 'status' }, message.text),
+      busy && (busy === 'push-full' || busy === 'clone-full') && h('button', { type: 'button', onClick: () => ipc.invoke('infinity-deploy:cancel-operation', site).then(() => setMessage({ type: 'info', text: 'Cancellation requested. The current network request or database import may finish before cancellation takes effect.' })) }, 'Cancel at next checkpoint'),
+      lastOperation && h('div', { className: 'infinity-deploy-recovery', role: 'status' },
+        h('strong', null, `Last ${lastOperation.kind} operation: ${lastOperation.status}`),
+        h('div', null, lastOperation.step || 'No step recorded'),
+        lastOperation.note && h('p', null, lastOperation.note),
+        ['interrupted','failed','cancelled'].includes(lastOperation.status) && h('p', null, 'Recovery: inspect both sites, compare database/files, and verify backups before retrying. Cancellation does not undo completed changes.')
+      ),
+      message && h('div', { className: `infinity-deploy-message is-${message.type}`, role: message.type === 'error' ? 'alert' : 'status' },
+        h('strong', null, message.type === 'error' ? 'Action needs attention. ' : ''), message.text,
+        message.type === 'error' && h('p', null, 'Check endpoint access, package limits, Bridge activity, and the latest operation record. Do not blindly retry a partially applied migration.')
+      ),
       h('div', { className: 'infinity-deploy-columns' },
         h('div', { className: 'infinity-deploy-fields' },
           h('h4', null, 'Local connection'),
@@ -158,11 +183,15 @@ function infinityDeployRenderer(context) {
           field('Live site URL', 'url', config.liveUrl, (value) => update('liveUrl', value), 'https://rahul.graphics'),
           field('Live WordPress username', 'text', config.liveUser, (value) => update('liveUser', value), 'e.g. rahulonit@gmail.com (your WP admin email)'),
           field('Live Application Password', 'password', config.livePassword, (value) => update('livePassword', value), 'xxxx xxxx xxxx xxxx'),
-          field('Theme slug', 'text', config.themeSlug, (value) => update('themeSlug', value), 'rahul-graphics')
+          field('Theme slug', 'text', config.themeSlug, (value) => update('themeSlug', value), 'rahul-graphics'),
+          field('Request timeout (seconds, 30–1800)', 'number', String(Math.round((config.requestTimeoutMs || 600000) / 1000)), (value) => update('requestTimeoutMs', Math.min(1800000, Math.max(30000, Number(value) * 1000 || 600000))), '600')
         ),
         h('div', { className: 'infinity-deploy-actions' },
           h('h4', null, 'Selective deployment'),
           button('Test both connections', 'test', test, busy),
+          button('Run deployment preflight', 'preflight', checkPreflight, busy),
+          button('Compare site files', 'files', compareFiles, busy),
+          button('View recent audit events', 'logs', refreshLogs, busy),
           button('Compare portfolio content', 'preview', compare, busy),
           button('Push theme with backup', 'theme', pushTheme, busy, 'primary'),
           button(selectedUuids.length > 0 ? `Push changed content (${selectedUuids.length} selected)` : 'Push changed content & media', 'content', pushContent, busy, 'primary', !preview || selectedUuids.length === 0),
@@ -192,6 +221,23 @@ function infinityDeployRenderer(context) {
             button('⬆ Push Complete Site (Local → Live)', 'push-full', pushFullSite, busy, 'danger')
           ),
 
+          preflightReport && h('section', { className: 'infinity-deploy-review', 'aria-label': 'Deployment preflight' },
+            h('h4', null, `Preflight: ${preflightReport.ok ? 'PASS' : 'BLOCKED'}`),
+            h('p', null, preflightReport.note),
+            h('ul', null, ...(preflightReport.checks || []).map(check => h('li', { key: check.key }, `${check.passed ? '✓' : check.severity === 'warning' ? '!' : '✕'} ${check.message}`)))
+          ),
+          fileDiff && h('section', { className: 'infinity-deploy-review', 'aria-label': 'File comparison' },
+            h('h4', null, `File comparison (${fileDiff.files.length})${fileDiff.partial ? ' — partial scan' : ''}`),
+            h('p', null, fileDiff.scope, '. Files with missing hashes are unverified; destination-only files are not deleted.'),
+            h('button', { type: 'button', onClick: () => setShowAllDiffs(v => !v) }, showAllDiffs ? 'Show first 60' : 'Show all results'),
+            h('ul', { className: 'infinity-deploy-diff-list' }, ...(fileDiff.files || []).slice(0, showAllDiffs ? 1200 : 60).map(item => h('li', { key: item.path },
+              h('strong', null, item.state + ' '), h('code', null, item.path), h('small', null, ` (${item.size} bytes source${item.remoteSize === null ? '' : ', ' + item.remoteSize + ' bytes destination'})`)
+            )))
+          ),
+          auditLogs.length > 0 && h('section', { className: 'infinity-deploy-review', 'aria-label': 'Deployment audit events' },
+            h('h4', null, 'Recent Live audit events'),
+            h('ul', null, ...auditLogs.slice(0, 20).map((item,index) => h('li', { key: item.event_id || index }, `${item.time_gmt || ''} · ${item.action || ''} · ${item.status || ''} · ${item.event_id || 'legacy record'}`)))
+          ),
           h('p', { className: 'infinity-deploy-help' }, 'Dedicated Application Passwords ensure individual revocability. Full site deployment creates an automated safety snapshot on the live server before import.'),
           preview && previewSummary(preview, selectedUuids, toggleItem, selectAll, deselectAll),
           backups.length > 0 && h('div', { className: 'infinity-deploy-backups' },
@@ -240,23 +286,32 @@ function infinityDeployRenderer(context) {
         h('span', null, '|'),
         h('button', { type: 'button', className: 'infinity-deploy-text-btn', onClick: onDeselectAll }, 'Deselect all')
       ),
-      h('ul', { className: 'infinity-deploy-list' }, ...diffItems.slice(0, 30).map((item) => {
+      h('ul', { className: 'infinity-deploy-list' }, ...diffItems.map((item) => {
         const isSelected = selectedUuids.includes(item.uuid);
         return h('li', { key: item.uuid, className: 'infinity-deploy-item' },
           h('label', { className: 'infinity-deploy-item-label' },
             h('input', { type: 'checkbox', checked: isSelected, onChange: () => onToggle(item.uuid) }),
             h('span', { className: `state-${item.state}` }, item.state),
             h('span', { className: 'infinity-deploy-item-title' }, ` ${item.title} `),
-            h('small', null, `(${item.type})`)
+            h('small', null, `(${item.type}) · ${item.fields && item.fields.length ? item.fields.join(', ') : 'metadata'} · source ${String(item.localHash || '').slice(0, 10)} → live ${String(item.remoteHash || 'none').slice(0, 10)}`)
           )
         );
-      }))
+      })),
+      data.media && data.media.length > 0 && h('details', null,
+        h('summary', null, `Media comparison (${data.media.length} records)`),
+        h('ul', null, ...data.media.map(m => h('li', { key: m.uuid },
+          `${m.state}: ${m.filename} · source ${String(m.localHash || '').slice(0, 10)} · live ${String(m.remoteHash || 'none').slice(0, 10)}`
+        )))
+      )
     );
   }
 
   function stat(value, label) { return h('span', null, h('strong', null, String(value)), label); }
 
   function successMessage(action, result) {
+    if (action === 'preflight') return result.ok ? 'Preflight passed. Review warnings before deploying.' : 'Preflight blocked deployment. Resolve failing checks.';
+    if (action === 'files') return `Compared ${result.files.length} file entries${result.partial ? ' (partial scan)' : ''}.`;
+    if (action === 'logs') return `Loaded ${(result.logs || []).length} audit records.`;
     if (action === 'test') return `Connected. Local WP ${result.local.wordpress_version} / Bridge ${result.local.bridge_version}; Live WP ${result.live.wordpress_version} / Bridge ${result.live.bridge_version}; live theme ${result.live.active_theme.version}.`;
     if (action === 'preview') return `Comparison complete: ${result.summary.new} new and ${result.summary.changed} changed content items.`;
     if (action === 'theme') return `Theme ${result.deployment.theme.version} deployed and health checks completed.`;
@@ -300,6 +355,7 @@ function injectStyles() {
     .infinity-deploy-progress{margin:0 0 18px;padding:12px;border-radius:9px;background:#f0f2fb;border:1px solid #d5daf5;position:relative;overflow:hidden}
     .infinity-deploy-progress-bar{position:absolute;top:0;left:0;bottom:0;background:linear-gradient(90deg,#6d4aff,#09a7ff);opacity:0.25;transition:width 0.25s ease}
     .infinity-deploy-progress-label{position:relative;z-index:1;font-size:12px;color:#2c3258}
+    .infinity-deploy-review,.infinity-deploy-recovery{border:1px solid #d9ddeb;border-radius:9px;padding:12px;margin:12px 0;background:#f9fafd;font-size:12px;line-height:1.55}.infinity-deploy-review ul{max-height:280px;overflow:auto;padding-left:18px;overflow-wrap:anywhere}.infinity-deploy-diff-list li{margin:5px 0}.infinity-deploy-recovery{border-color:#e9c18f;background:#fff9ef}
     .infinity-deploy-preview{margin-top:18px;padding-top:15px;border-top:1px solid #ececf2}.infinity-deploy-stats{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px}.infinity-deploy-stats span{display:flex;gap:5px;padding:6px 9px;border-radius:99px;background:#f0f1f6;font-size:11px}
     .infinity-deploy-controls{display:flex;align-items:center;gap:8px;font-size:11px;color:#686b7b;margin-bottom:8px}
     .infinity-deploy-selection-count{font-weight:700;color:#202231}

@@ -73,7 +73,7 @@ final class Infinity_Deploy_API {
 
 	public static function settings() {
 		return wp_parse_args( get_option( 'infinity_deploy_settings', array() ), array(
-			'enabled' => '1', 'allowed_themes' => 'rahul-graphics', 'content_types' => array( 'page', 'rg_product', 'rg_service', 'rg_testimonial' ), 'max_package_mb' => 200, 'retained_backups' => 5,
+			'enabled' => '1', 'allowed_themes' => 'rahul-graphics', 'content_types' => array( 'page', 'rg_product', 'rg_service', 'rg_testimonial' ), 'max_package_mb' => 200, 'retained_backups' => 5, 'critical_health_paths' => '/,/wp-json/',
 		) );
 	}
 
@@ -92,9 +92,15 @@ final class Infinity_Deploy_API {
 			'/db/restore' => array( 'POST', 'restore_db_snapshot', 'can_deploy' ),
 			'/db/snapshots' => array( 'GET', 'list_db_snapshots', 'can_read' ),
 			'/site/export' => array( 'POST', 'export_site_pack', 'can_deploy' ),
+			'/site/manifest' => array( 'POST', 'site_manifest', 'can_deploy' ),
 			'/site/import' => array( 'POST', 'import_site_pack', 'can_deploy' ),
 			'/package/download' => array( 'GET', 'download_package', 'can_deploy' ),
 			'/package/cleanup' => array( 'POST', 'cleanup_package', 'can_deploy' ),
+			'/transfer/start' => array( 'POST', 'transfer_start', 'can_deploy' ),
+			'/transfer/status' => array( 'GET', 'transfer_status', 'can_deploy' ),
+			'/transfer/chunk' => array( 'POST', 'transfer_chunk', 'can_deploy' ),
+			'/transfer/complete' => array( 'POST', 'transfer_complete', 'can_deploy' ),
+			'/transfer/cancel' => array( 'POST', 'transfer_cancel', 'can_deploy' ),
 			'/maintenance' => array( 'POST', 'maintenance', 'can_deploy' ),
 			'/logs' => array( 'GET', 'logs', 'can_read' ),
 		);
@@ -128,6 +134,7 @@ final class Infinity_Deploy_API {
 			'content_types' => Infinity_Deploy_Content::allowed_types(),
 			'permalink_structure' => get_option( 'permalink_structure' ),
 			'zip_available' => class_exists( 'ZipArchive' ),
+			'free_disk_bytes' => ( is_int( @disk_free_space( WP_CONTENT_DIR ) ) || is_float( @disk_free_space( WP_CONTENT_DIR ) ) ) ? (float) @disk_free_space( WP_CONTENT_DIR ) : null,
 			'max_package_mb' => absint( self::settings()['max_package_mb'] ),
 			'backups' => Infinity_Deploy_Backups::list_backups(),
 			'db_snapshots' => Infinity_Deploy_Safety::list_snapshots(),
@@ -364,6 +371,10 @@ final class Infinity_Deploy_API {
 		return rest_ensure_response( array( 'ok' => true, 'snapshots' => Infinity_Deploy_Safety::list_snapshots() ) );
 	}
 
+	public function site_manifest( WP_REST_Request $request ) {
+		return rest_ensure_response( Infinity_Deploy_File_Manifest::build( $request->get_param( 'components' ) ) );
+	}
+
 	public function export_site_pack( WP_REST_Request $request ) {
 		$components = $request->get_param( 'components' );
 		if ( empty( $components ) || ! is_array( $components ) ) {
@@ -517,6 +528,12 @@ final class Infinity_Deploy_API {
 		return rest_ensure_response( array( 'ok' => false, 'message' => 'File not found or already deleted' ) );
 	}
 
+	public function transfer_start( WP_REST_Request $request ) { return rest_ensure_response( Infinity_Deploy_Transfer::start( $request ) ); }
+	public function transfer_status( WP_REST_Request $request ) { return rest_ensure_response( Infinity_Deploy_Transfer::status( $request ) ); }
+	public function transfer_chunk( WP_REST_Request $request ) { return rest_ensure_response( Infinity_Deploy_Transfer::chunk( $request ) ); }
+	public function transfer_complete( WP_REST_Request $request ) { return rest_ensure_response( Infinity_Deploy_Transfer::complete( $request ) ); }
+	public function transfer_cancel( WP_REST_Request $request ) { return rest_ensure_response( Infinity_Deploy_Transfer::cancel( $request ) ); }
+
 	public function maintenance() {
 		// Generic extensibility hook for themes and plugins
 		do_action( 'infinity_deploy_maintenance' );
@@ -536,8 +553,33 @@ final class Infinity_Deploy_API {
 	public function logs() { return rest_ensure_response( array( 'logs' => array_reverse( (array) get_option( 'infinity_deploy_logs', array() ) ) ) ); }
 
 	public static function log( $action, $status, $context = array() ) {
+		// Persist structured, bounded operational metadata only. Never store arbitrary
+		// request payloads, credentials, URLs with auth tokens, or database values.
+		$allowed = array( 'theme', 'backup', 'code', 'reason', 'items', 'uuid', 'status', 'size', 'file', 'components', 'snapshot', 'key' );
+		$safe_context = array();
+		foreach ( (array) $context as $key => $value ) {
+			$key = sanitize_key( $key );
+			if ( ! in_array( $key, $allowed, true ) ) { continue; }
+			if ( is_scalar( $value ) ) {
+				$text = sanitize_text_field( (string) $value );
+				// Do not store arbitrary long strings or credential-like values.
+				$safe_context[ $key ] = substr( $text, 0, 120 );
+			} elseif ( 'components' === $key && is_array( $value ) ) {
+				$safe_context[ $key ] = array_slice( array_map( 'sanitize_key', $value ), 0, 3 );
+			}
+		}
+		$event = array(
+			'schema_version' => 2,
+			'event_id' => wp_generate_uuid4(),
+			'time_gmt' => gmdate( 'c' ),
+			'user_id' => get_current_user_id(),
+			'action' => sanitize_key( $action ),
+			'status' => sanitize_key( $status ),
+			'severity' => in_array( $status, array( 'failed', 'rolled_back' ), true ) ? 'error' : ( 'warning' === $status ? 'warning' : 'info' ),
+			'context' => $safe_context,
+		);
 		$logs = (array) get_option( 'infinity_deploy_logs', array() );
-		$logs[] = array( 'time_gmt' => gmdate( 'c' ), 'user_id' => get_current_user_id(), 'action' => sanitize_key( $action ), 'status' => sanitize_key( $status ), 'context' => map_deep( $context, 'sanitize_text_field' ) );
+		$logs[] = $event;
 		if ( count( $logs ) > 200 ) { $logs = array_slice( $logs, -200 ); }
 		update_option( 'infinity_deploy_logs', $logs, false );
 	}
@@ -547,7 +589,11 @@ final class Infinity_Deploy_API {
 	private function health_check() {
 		$default_paths = array( '/', '/about/', '/contact/', '/products/', '/services/' );
 		$paths = (array) apply_filters( 'infinity_deploy_health_check_paths', $default_paths );
-		$critical_paths = (array) apply_filters( 'infinity_deploy_critical_health_check_paths', array( '/' ) );
+		$configured = array_filter( array_map( 'trim', explode( ',', (string) self::settings()['critical_health_paths'] ) ) );
+		$critical_paths = (array) apply_filters( 'infinity_deploy_critical_health_check_paths', $configured );
+		$critical_paths[] = '/';
+		$critical_paths = array_values( array_unique( array_filter( $critical_paths, function( $path ) { return is_string( $path ) && 0 === strpos( $path, '/' ) && 0 !== strpos( $path, '//' ); } ) ) );
+		$paths = array_values( array_unique( array_merge( $paths, $critical_paths ) ) );
 		$sslverify = (bool) apply_filters( 'infinity_deploy_health_check_sslverify', ! ( defined( 'WP_ENVIRONMENT_TYPE' ) && 'local' === WP_ENVIRONMENT_TYPE ) );
 		$checks = array();
 		$ok = true;
