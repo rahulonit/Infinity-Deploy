@@ -366,18 +366,30 @@ function infinityDeployMain(context) {
     assertFullSiteCompatibility(localStatus, 'Local');
     assertFullSiteCompatibility(liveStatus, 'Live');
 
-    // 1. Safety snapshot of Live database FIRST before touching anything!
-    notifyProgress(_event, 'Creating safety snapshot of Live database...', 12);
-    const safetySnapshot = await apiJson(clean, 'live', 'POST', '/db/snapshot', { label: 'pre-push-full' });
-
-    let dbResult = null;
-    let siteResult = [];
-
-    // 2. Files Sync (Uploads, Plugins, Themes)
+    // Determine the exact file scope before creating recovery points.
     const components = [];
     if (includeUploads) components.push('uploads');
     if (includePlugins) components.push('plugins');
     components.push('themes');
+
+    // Fail closed: both recovery artifacts must exist before any production mutation.
+    notifyProgress(_event, 'Creating safety snapshot of Live database...', 10);
+    const safetySnapshot = await apiJson(clean, 'live', 'POST', '/db/snapshot', { label: 'pre-push-full' });
+    if (!safetySnapshot || !safetySnapshot.snapshot || !safetySnapshot.snapshot.key) {
+      throw new Error('Live database safety snapshot did not return a recovery key; deployment aborted.');
+    }
+
+    notifyProgress(_event, 'Backing up Live site files before deployment...', 12);
+    const liveFilesBackup = await apiJson(clean, 'live', 'POST', '/site/export', { components });
+    if (!liveFilesBackup || !liveFilesBackup.file_key || !(liveFilesBackup.size > 0)) {
+      throw new Error('Live site-file backup could not be verified; deployment aborted before file changes.');
+    }
+    // This ZIP stays on Live for recovery. Do not call /package/cleanup on its file_key.
+    // It is an overlay backup, not an atomic whole-site rollback.
+    let dbResult = null;
+    let siteResult = [];
+
+    // 2. Files Sync (Uploads, Plugins, Themes)
 
     for (let i = 0; i < components.length; i++) {
       const comp = components[i];
@@ -435,7 +447,7 @@ function infinityDeployMain(context) {
 	}
     notifyProgress(_event, 'Full site deployment completed successfully!', 100);
 
-    return { ok: true, safetySnapshot: safetySnapshot ? safetySnapshot.snapshot : null, db: dbResult, siteFiles: siteResult, maintenance };
+    return { ok: true, safetySnapshot: safetySnapshot.snapshot, liveFilesBackup: liveFilesBackup.file_key, db: dbResult, siteFiles: siteResult, maintenance };
   });
 
   ipcMain.handle('infinity-deploy:get-db-snapshots', async (_event, site, config) => {
