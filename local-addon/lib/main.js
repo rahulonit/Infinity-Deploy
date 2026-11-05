@@ -459,6 +459,8 @@ class ConfigStore {
   constructor(filename, safeStorage) {
     this.filename = filename;
     this.safeStorage = safeStorage;
+    // Passwords remain in memory for this Local session when secure storage is unavailable.
+    this.sessionSecrets = new Map();
   }
   read() {
     try { return JSON.parse(fs.readFileSync(this.filename, 'utf8')); } catch (_) { return {}; }
@@ -473,7 +475,8 @@ class ConfigStore {
     if (this.safeStorage && this.safeStorage.isEncryptionAvailable()) {
       return `safe:${this.safeStorage.encryptString(value).toString('base64')}`;
     }
-    return `base64:${Buffer.from(value, 'utf8').toString('base64')}`;
+    // Never write an obfuscated (but recoverable) Application Password to disk.
+    return '';
   }
   reveal(value) {
     if (!value) return '';
@@ -481,18 +484,23 @@ class ConfigStore {
       return this.safeStorage.decryptString(Buffer.from(value.slice(5), 'base64'));
     }
     if (value.startsWith('safe:')) return '';
-    if (value.startsWith('base64:')) return Buffer.from(value.slice(7), 'base64').toString('utf8');
-    return value;
+    // Legacy base64/plaintext values are deliberately not loaded; re-enter the password.
+    return '';
   }
   get(siteId) {
     const item = this.read()[siteId] || {};
+    const session = this.sessionSecrets.get(siteId) || {};
     return Object.assign({}, item, {
-      livePassword: this.reveal(item.livePassword || ''),
-      localPassword: this.reveal(item.localPassword || ''),
+      livePassword: session.livePassword || this.reveal(item.livePassword || ''),
+      localPassword: session.localPassword || this.reveal(item.localPassword || ''),
     });
   }
   set(siteId, config) {
     const all = this.read();
+    this.sessionSecrets.set(siteId, {
+      livePassword: config.livePassword || '',
+      localPassword: config.localPassword || '',
+    });
     all[siteId] = Object.assign({}, config, {
       livePassword: this.protect(config.livePassword),
       localPassword: this.protect(config.localPassword),
