@@ -553,8 +553,33 @@ final class Infinity_Deploy_API {
 	public function logs() { return rest_ensure_response( array( 'logs' => array_reverse( (array) get_option( 'infinity_deploy_logs', array() ) ) ) ); }
 
 	public static function log( $action, $status, $context = array() ) {
+		// Persist structured, bounded operational metadata only. Never store arbitrary
+		// request payloads, credentials, URLs with auth tokens, or database values.
+		$allowed = array( 'theme', 'backup', 'code', 'reason', 'items', 'uuid', 'status', 'size', 'file', 'components', 'snapshot', 'key' );
+		$safe_context = array();
+		foreach ( (array) $context as $key => $value ) {
+			$key = sanitize_key( $key );
+			if ( ! in_array( $key, $allowed, true ) ) { continue; }
+			if ( is_scalar( $value ) ) {
+				$text = sanitize_text_field( (string) $value );
+				// Do not store arbitrary long strings or credential-like values.
+				$safe_context[ $key ] = substr( $text, 0, 120 );
+			} elseif ( 'components' === $key && is_array( $value ) ) {
+				$safe_context[ $key ] = array_slice( array_map( 'sanitize_key', $value ), 0, 3 );
+			}
+		}
+		$event = array(
+			'schema_version' => 2,
+			'event_id' => wp_generate_uuid4(),
+			'time_gmt' => gmdate( 'c' ),
+			'user_id' => get_current_user_id(),
+			'action' => sanitize_key( $action ),
+			'status' => sanitize_key( $status ),
+			'severity' => in_array( $status, array( 'failed', 'rolled_back' ), true ) ? 'error' : ( 'warning' === $status ? 'warning' : 'info' ),
+			'context' => $safe_context,
+		);
 		$logs = (array) get_option( 'infinity_deploy_logs', array() );
-		$logs[] = array( 'time_gmt' => gmdate( 'c' ), 'user_id' => get_current_user_id(), 'action' => sanitize_key( $action ), 'status' => sanitize_key( $status ), 'context' => map_deep( $context, 'sanitize_text_field' ) );
+		$logs[] = $event;
 		if ( count( $logs ) > 200 ) { $logs = array_slice( $logs, -200 ); }
 		update_option( 'infinity_deploy_logs', $logs, false );
 	}
