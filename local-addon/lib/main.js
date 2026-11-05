@@ -32,6 +32,7 @@ const CHANNELS = [
   'infinity-deploy:cancel-operation',
   'infinity-deploy:preflight',
   'infinity-deploy:compare-files',
+  'infinity-deploy:get-audit-logs',
 ];
 
 function infinityDeployMain(context) {
@@ -114,6 +115,10 @@ function infinityDeployMain(context) {
     if(options.includeUploads)components.push('uploads');
     if(options.includePlugins)components.push('plugins');
     return preflight(local,live,MIN_FULL_SITE_BRIDGE_VERSION,components);
+  });
+  ipcMain.handle('infinity-deploy:get-audit-logs', async (_event, site, config) => {
+    const clean=normalizeConfig(config,site);
+    return apiJson(clean,'live','GET','/logs');
   });
   ipcMain.handle('infinity-deploy:compare-files', async (_event, site, config, options={}) => {
     const clean=normalizeConfig(config,site);
