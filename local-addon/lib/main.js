@@ -10,7 +10,7 @@ const { spawnSync } = require('child_process');
 
 const zlib = require('zlib');
 const { OperationJournal, uploadResumable } = require('./reliability');
-const ADDON_VERSION = '1.0.5';
+const ADDON_VERSION = '1.1.0';
 const MIN_FULL_SITE_BRIDGE_VERSION = '1.0.4';
 
 const CHANNELS = [
@@ -641,6 +641,7 @@ async function apiJson(config, target, method, apiPath, body) {
     password: auth.password,
     headers: payload ? { 'Content-Type': 'application/json', 'Content-Length': String(payload.length) } : {},
     body: payload,
+    timeout: config.requestTimeoutMs,
   });
   return parseJsonResponse(response);
 }
@@ -660,6 +661,7 @@ async function apiMultipart(config, target, apiPath, fields, file, extraHeaders)
     method: 'POST', user: auth.user, password: auth.password,
     headers: Object.assign({ 'Content-Type': `multipart/form-data; boundary=${boundary}`, 'Content-Length': String(body.length) }, extraHeaders),
     body,
+    timeout: config.requestTimeoutMs,
   });
   return parseJsonResponse(response);
 }
