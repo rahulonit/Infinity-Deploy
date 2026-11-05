@@ -95,6 +95,11 @@ final class Infinity_Deploy_API {
 			'/site/import' => array( 'POST', 'import_site_pack', 'can_deploy' ),
 			'/package/download' => array( 'GET', 'download_package', 'can_deploy' ),
 			'/package/cleanup' => array( 'POST', 'cleanup_package', 'can_deploy' ),
+			'/transfer/start' => array( 'POST', 'transfer_start', 'can_deploy' ),
+			'/transfer/status' => array( 'GET', 'transfer_status', 'can_deploy' ),
+			'/transfer/chunk' => array( 'POST', 'transfer_chunk', 'can_deploy' ),
+			'/transfer/complete' => array( 'POST', 'transfer_complete', 'can_deploy' ),
+			'/transfer/cancel' => array( 'POST', 'transfer_cancel', 'can_deploy' ),
 			'/maintenance' => array( 'POST', 'maintenance', 'can_deploy' ),
 			'/logs' => array( 'GET', 'logs', 'can_read' ),
 		);
@@ -516,6 +521,12 @@ final class Infinity_Deploy_API {
 
 		return rest_ensure_response( array( 'ok' => false, 'message' => 'File not found or already deleted' ) );
 	}
+
+	public function transfer_start( WP_REST_Request $request ) { return rest_ensure_response( Infinity_Deploy_Transfer::start( $request ) ); }
+	public function transfer_status( WP_REST_Request $request ) { return rest_ensure_response( Infinity_Deploy_Transfer::status( $request ) ); }
+	public function transfer_chunk( WP_REST_Request $request ) { return rest_ensure_response( Infinity_Deploy_Transfer::chunk( $request ) ); }
+	public function transfer_complete( WP_REST_Request $request ) { return rest_ensure_response( Infinity_Deploy_Transfer::complete( $request ) ); }
+	public function transfer_cancel( WP_REST_Request $request ) { return rest_ensure_response( Infinity_Deploy_Transfer::cancel( $request ) ); }
 
 	public function maintenance() {
 		// Generic extensibility hook for themes and plugins
