@@ -77,4 +77,6 @@ test('full-site push gates file mutations on verified recovery points', () => {
   assert.ok(databaseBackup >= 0 && fileBackup > databaseBackup && fileMutation > fileBackup);
   assert.ok(flow.includes('!liveFilesBackup.file_key'));
   assert.ok(flow.includes('liveFilesBackup: liveFilesBackup.file_key'));
+  assert.ok(flow.includes('Recovery artifacts on Live: database snapshot'));
+  assert.ok(flow.includes('site-file ZIP ${liveFilesBackup.file_key}'));
 });
