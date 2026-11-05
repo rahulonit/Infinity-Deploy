@@ -18,6 +18,8 @@ jobs:
           node --check local-addon/lib/main.js
           node --check local-addon/lib/renderer.js
           node --check local-addon/lib/reliability.js
+          node --check local-addon/lib/full-site.js
+          node --check local-addon/lib/deployment-models.js
       - name: Hardening tests
         run: node --test tests/*.test.js
 
