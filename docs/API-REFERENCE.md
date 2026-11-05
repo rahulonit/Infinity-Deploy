@@ -31,6 +31,11 @@ Unless noted, mutation routes require `manage_options` and the Bridge setting **
 | GET | `/package/download` | Stream a generated package | Deploy |
 | POST | `/package/cleanup` | Delete a temporary package | Deploy |
 | POST | `/maintenance` | Hooks, rewrites, cache flush, health checks | Deploy |
+| POST | `/transfer/start` | Start a checksummed package upload session | Deploy |
+| GET | `/transfer/status?id=...` | Query uploaded offset for owner | Deploy |
+| POST | `/transfer/chunk` | Upload next fixed-offset multipart chunk | Deploy |
+| POST | `/transfer/complete` | Final SHA-256 validation and package key | Deploy |
+| POST | `/transfer/cancel` | Delete uncommitted chunks | Deploy |
 | GET | `/logs` | Read newest-first bounded activity log | Read |
 
 ## Status
@@ -134,3 +139,9 @@ WordPress REST errors use this shape:
 Common HTTP meanings: 400 invalid input/package, 401 invalid Application Password, 403 capability/disabled/allowlist failure, 404 missing package/snapshot, 413 configured or server upload limit, and 500 import/filesystem/health failure.
 
 The API is an implementation contract for the bundled add-on, not a general remote-management API. Backward compatibility should be reviewed and documented before exposing it to third-party clients.
+
+## Resumable package uploads (Bridge 1.0.4+)
+
+Start with `POST /transfer/start` JSON: `{"filename":"site.zip","size":1234,"sha256":"<64 hexadecimal characters>"}`. The server returns a random `id`, `offset: 0`, and `chunk_size` (max 4 MiB). Send each chunk to `POST /transfer/chunk` as multipart with file field `chunk` and text fields `id`, `offset`, `sha256` (chunk digest). Chunks are sequential and authenticated to the creating user. On timeout or lost acknowledgment, request `GET /transfer/status?id=...` and continue at that byte offset. After all bytes are committed, `POST /transfer/complete` with `{"id":"..."}`; the returned `file_key` can be passed to `/db/import` or `/site/import`. Server sessions expire after 24 hours; a user is limited to five active sessions. The final digest is always verified before import.
+
+Only full-site **uploads** use chunked transfer in this release. Downloads, theme uploads, and selective media retain their previous transport. The Local journal is diagnostic rather than an automatic workflow-resume mechanism, and cancellation is cooperative between network steps. Never assume a cancelled deployment rolled back previously applied changes.
