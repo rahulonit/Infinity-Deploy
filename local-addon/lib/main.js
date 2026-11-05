@@ -9,8 +9,9 @@ const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 
 const zlib = require('zlib');
+const { OperationJournal, uploadResumable } = require('./reliability');
 const ADDON_VERSION = '1.0.5';
-const MIN_FULL_SITE_BRIDGE_VERSION = '1.0.3';
+const MIN_FULL_SITE_BRIDGE_VERSION = '1.0.4';
 
 const CHANNELS = [
   'infinity-deploy:get-config',
@@ -25,6 +26,8 @@ const CHANNELS = [
   'infinity-deploy:push-full-site',
   'infinity-deploy:get-db-snapshots',
   'infinity-deploy:restore-db-snapshot',
+  'infinity-deploy:get-operation',
+  'infinity-deploy:cancel-operation',
 ];
 
 function infinityDeployMain(context) {
@@ -41,6 +44,18 @@ function infinityDeployMain(context) {
     ? context.environment.userDataPath
     : electronApp.getPath('userData');
   const store = new ConfigStore(path.join(userDataPath, 'infinity-deploy', 'connections.json'), safeStorage);
+  const journal = new OperationJournal(path.join(userDataPath, 'infinity-deploy', 'operations'));
+  const cancelled = new Set();
+  ipcMain.handle('infinity-deploy:get-operation', (_event, site) => {
+    const record = journal.read(site.id);
+    return record && record.status === 'running' ? { ...record, status: 'interrupted' } : record;
+  });
+  ipcMain.handle('infinity-deploy:cancel-operation', (_event, site) => {
+    cancelled.add(String(site.id));
+    const record = journal.read(site.id);
+    if (record && record.status === 'running') journal.progress(site.id, 'Cancellation requested; waiting for safe checkpoint', record.percent);
+    return { ok: true, cooperative: true };
+  });
 
   CHANNELS.forEach((channel) => {
     try { ipcMain.removeHandler(channel); } catch (_) { /* Handler was not registered. */ }
@@ -264,9 +279,18 @@ function infinityDeployMain(context) {
 
   ipcMain.handle('infinity-deploy:clone-full-site', async (_event, site, config, options = {}) => {
     const clean = normalizeConfig(config, site);
+    cancelled.delete(String(site.id));
+    journal.begin(site.id, 'clone');
+    const cancelledNow = () => cancelled.has(String(site.id));
+    const report = (event, message, percent) => {
+      if (cancelledNow()) throw new Error('Operation cancelled at a safe checkpoint. Some earlier changes may already be applied.');
+      journal.progress(site.id, message, percent);
+      notifyProgress(event, message, percent);
+    };
+    try {
     const { includeDb = true, includeUploads = true, includePlugins = true, preserveUsers = false } = options;
 
-    notifyProgress(_event, 'Validating Local and Live Bridge versions...', 5);
+    report(_event, 'Validating Local and Live Bridge versions...', 5);
     const [localStatus, liveStatus] = await Promise.all([
       apiJson(clean, 'local', 'GET', '/status'),
       apiJson(clean, 'live', 'GET', '/status'),
@@ -279,26 +303,26 @@ function infinityDeployMain(context) {
 
     // 1. DATABASE FIRST (Fastest, most critical part of clone)
     if (includeDb) {
-      notifyProgress(_event, 'Exporting complete Live database...', 15);
+      report(_event, 'Exporting complete Live database...', 15);
       const dbRes = await apiJson(clean, 'live', 'POST', '/db/export', { exclude_users: preserveUsers });
       if (dbRes && dbRes.file_key) {
         const tempSql = path.join(os.tmpdir(), `infinity-clone-db-${Date.now()}-${dbRes.filename}`);
         try {
           const mbSize = dbRes.size ? Math.max(1, Math.round(dbRes.size / 1024 / 1024)) : 0;
-          notifyProgress(_event, `Downloading database (${mbSize} MB)...`, 30);
+          report(_event, `Downloading database (${mbSize} MB)...`, 30);
           await downloadPackageToFile(clean, 'live', dbRes.file_key, tempSql);
 
           // Clean up SQL export on live server
           await apiJson(clean, 'live', 'POST', '/package/cleanup', { file_key: dbRes.file_key }).catch(() => {});
 
-          notifyProgress(_event, 'Importing database into Local & running serialized search-replace...', 45);
-          dbResult = await uploadFileStream(clean, 'local', '/db/import', tempSql, 'database', path.basename(tempSql), {
+          report(_event, 'Importing database into Local & running serialized search-replace...', 45);
+          dbResult = await uploadResumable({ config: clean, target: 'local', apiJson, uploadFileStream, filePath: tempSql, importPath: '/db/import', isCancelled: cancelledNow, onCheckpoint: state => journal.progress(site.id, `Database upload ${state.offset || 0}/${state.size || 0}`, 42), extraFields: {
             source_url: clean.liveUrl,
             target_url: clean.localUrl,
 			source_path: dbRes.site_path || '',
             source_prefix: dbRes.prefix,
             preserve_users: preserveUsers ? '1' : '0',
-          });
+          } });
         } finally {
           try { fs.unlinkSync(tempSql); } catch (_) {}
         }
@@ -313,7 +337,7 @@ function infinityDeployMain(context) {
     for (let i = 0; i < components.length; i++) {
       const comp = components[i];
       const baseProgress = 50 + Math.round((i / components.length) * 40); // 50% to 90%
-      notifyProgress(_event, `Packaging live site files: ${comp}...`, baseProgress);
+      report(_event, `Packaging live site files: ${comp}...`, baseProgress);
 
       try {
         const exportRes = await apiJson(clean, 'live', 'POST', '/site/export', { components: [comp] });
@@ -321,14 +345,14 @@ function infinityDeployMain(context) {
           const tempZip = path.join(os.tmpdir(), `infinity-clone-${comp}-${Date.now()}.zip`);
           try {
             const mbSize = exportRes.size ? Math.max(1, Math.round(exportRes.size / 1024 / 1024)) : 0;
-            notifyProgress(_event, `Downloading ${comp} (${mbSize} MB)...`, baseProgress + 5);
+            report(_event, `Downloading ${comp} (${mbSize} MB)...`, baseProgress + 5);
             await downloadPackageToFile(clean, 'live', exportRes.file_key, tempZip);
 
             // Clean up package on live server
             await apiJson(clean, 'live', 'POST', '/package/cleanup', { file_key: exportRes.file_key }).catch(() => {});
 
-            notifyProgress(_event, `Extracting ${comp} into Local environment...`, baseProgress + 10);
-            const importRes = await uploadFileStream(clean, 'local', '/site/import', tempZip, 'package', path.basename(tempZip));
+            report(_event, `Extracting ${comp} into Local environment...`, baseProgress + 10);
+            const importRes = await uploadResumable({ config: clean, target: 'local', apiJson, uploadFileStream, filePath: tempZip, importPath: '/site/import', isCancelled: cancelledNow, onCheckpoint: state => journal.progress(site.id, `${comp} upload ${state.offset || 0}/${state.size || 0}`, baseProgress + 10) });
             siteResult.push({ component: comp, result: importRes });
           } finally {
             try { fs.unlinkSync(tempZip); } catch (_) {}
@@ -340,7 +364,7 @@ function infinityDeployMain(context) {
       }
     }
 
-    notifyProgress(_event, 'Finalizing Local site permalinks and cache flush...', 95);
+    report(_event, 'Finalizing Local site permalinks and cache flush...', 95);
     const maintenance = await apiJson(clean, 'local', 'POST', '/maintenance', {});
 	const failedComponents = siteResult.filter((item) => item && item.error);
 	if (failedComponents.length > 0) {
@@ -349,16 +373,30 @@ function infinityDeployMain(context) {
 	if (!maintenance || !maintenance.ok) {
 	  throw new Error('Clone data transferred, but the final Local health check failed. Review the Bridge activity log.');
 	}
-    notifyProgress(_event, 'Site cloning completed successfully!', 100);
+    report(_event, 'Site cloning completed successfully!', 100);
 
+    journal.finish(site.id, 'completed', 'Clone completed');
     return { ok: true, db: dbResult, siteFiles: siteResult, maintenance };
+    } catch (error) {
+      journal.finish(site.id, cancelledNow() ? 'cancelled' : 'failed', error.message);
+      throw error;
+    } finally { cancelled.delete(String(site.id)); }
   });
 
   ipcMain.handle('infinity-deploy:push-full-site', async (_event, site, config, options = {}) => {
     const clean = normalizeConfig(config, site);
+    cancelled.delete(String(site.id));
+    journal.begin(site.id, 'push');
+    const cancelledNow = () => cancelled.has(String(site.id));
+    const report = (event, message, percent) => {
+      if (cancelledNow()) throw new Error('Operation cancelled at a safe checkpoint. Some earlier changes may already be applied.');
+      journal.progress(site.id, message, percent);
+      notifyProgress(event, message, percent);
+    };
+    try {
     const { includeDb = true, includeUploads = true, includePlugins = true, preserveUsers = true } = options;
 
-    notifyProgress(_event, 'Validating Local and Live Bridge versions...', 5);
+    report(_event, 'Validating Local and Live Bridge versions...', 5);
     const [localStatus, liveStatus] = await Promise.all([
       apiJson(clean, 'local', 'GET', '/status'),
       apiJson(clean, 'live', 'GET', '/status'),
@@ -373,13 +411,13 @@ function infinityDeployMain(context) {
     components.push('themes');
 
     // Fail closed: both recovery artifacts must exist before any production mutation.
-    notifyProgress(_event, 'Creating safety snapshot of Live database...', 10);
+    report(_event, 'Creating safety snapshot of Live database...', 10);
     const safetySnapshot = await apiJson(clean, 'live', 'POST', '/db/snapshot', { label: 'pre-push-full' });
     if (!safetySnapshot || !safetySnapshot.snapshot || !safetySnapshot.snapshot.key) {
       throw new Error('Live database safety snapshot did not return a recovery key; deployment aborted.');
     }
 
-    notifyProgress(_event, 'Backing up Live site files before deployment...', 12);
+    report(_event, 'Backing up Live site files before deployment...', 12);
     const liveFilesBackup = await apiJson(clean, 'live', 'POST', '/site/export', { components });
     if (!liveFilesBackup || !liveFilesBackup.file_key || !(liveFilesBackup.size > 0)) {
       throw new Error('Live site-file backup could not be verified; deployment aborted before file changes.');
@@ -396,19 +434,19 @@ function infinityDeployMain(context) {
     for (let i = 0; i < components.length; i++) {
       const comp = components[i];
       const baseProgress = 15 + Math.round((i / components.length) * 45); // 15% to 60%
-      notifyProgress(_event, `Packaging local site files: ${comp}...`, baseProgress);
+      report(_event, `Packaging local site files: ${comp}...`, baseProgress);
 
       const localPack = await apiJson(clean, 'local', 'POST', '/site/export', { components: [comp] });
       if (localPack && localPack.file_key) {
         const tempZip = path.join(os.tmpdir(), `infinity-push-${comp}-${Date.now()}.zip`);
         try {
-          notifyProgress(_event, `Downloading local ${comp} package...`, baseProgress + 5);
+          report(_event, `Downloading local ${comp} package...`, baseProgress + 5);
           await downloadPackageToFile(clean, 'local', localPack.file_key, tempZip);
           await apiJson(clean, 'local', 'POST', '/package/cleanup', { file_key: localPack.file_key }).catch(() => {});
 
           const mbSize = localPack.size ? Math.max(1, Math.round(localPack.size / 1024 / 1024)) : 0;
-          notifyProgress(_event, `Streaming ${comp} to Live server (${mbSize} MB)...`, baseProgress + 10);
-          const importRes = await uploadFileStream(clean, 'live', '/site/import', tempZip, 'package', path.basename(tempZip));
+          report(_event, `Streaming ${comp} to Live server (${mbSize} MB)...`, baseProgress + 10);
+          const importRes = await uploadResumable({ config: clean, target: 'live', apiJson, uploadFileStream, filePath: tempZip, importPath: '/site/import', isCancelled: cancelledNow, onCheckpoint: state => journal.progress(site.id, `${comp} upload ${state.offset || 0}/${state.size || 0}`, baseProgress + 10) });
           siteResult.push({ component: comp, result: importRes });
         } finally {
           try { fs.unlinkSync(tempZip); } catch (_) {}
@@ -418,41 +456,46 @@ function infinityDeployMain(context) {
 
     // 3. Database Sync
     if (includeDb) {
-      notifyProgress(_event, 'Exporting Local database...', 65);
+      report(_event, 'Exporting Local database...', 65);
       const localDb = await apiJson(clean, 'local', 'POST', '/db/export', { exclude_users: preserveUsers });
       if (localDb && localDb.file_key) {
         const tempSql = path.join(os.tmpdir(), `infinity-push-db-${Date.now()}-${localDb.filename}`);
         try {
-          notifyProgress(_event, 'Downloading local database dump...', 72);
+          report(_event, 'Downloading local database dump...', 72);
           await downloadPackageToFile(clean, 'local', localDb.file_key, tempSql);
           await apiJson(clean, 'local', 'POST', '/package/cleanup', { file_key: localDb.file_key }).catch(() => {});
 
           const mbSize = localDb.size ? Math.max(1, Math.round(localDb.size / 1024 / 1024)) : 0;
-          notifyProgress(_event, `Uploading database to Live & running serialized search-replace (${mbSize} MB)...`, 85);
-          dbResult = await uploadFileStream(clean, 'live', '/db/import', tempSql, 'database', path.basename(tempSql), {
+          report(_event, `Uploading database to Live & running serialized search-replace (${mbSize} MB)...`, 85);
+          dbResult = await uploadResumable({ config: clean, target: 'live', apiJson, uploadFileStream, filePath: tempSql, importPath: '/db/import', isCancelled: cancelledNow, onCheckpoint: state => journal.progress(site.id, `Database upload ${state.offset || 0}/${state.size || 0}`, 85), extraFields: {
             source_url: clean.localUrl,
             target_url: clean.liveUrl,
 			source_path: localDb.site_path || '',
             source_prefix: localDb.prefix,
             preserve_users: preserveUsers ? '1' : '0',
-          });
+          } });
         } finally {
           try { fs.unlinkSync(tempSql); } catch (_) {}
         }
       }
     }
 
-    notifyProgress(_event, 'Running live health checks and cache flush...', 95);
+    report(_event, 'Running live health checks and cache flush...', 95);
     const maintenance = await apiJson(clean, 'live', 'POST', '/maintenance', {});
 	if (!maintenance || !maintenance.ok) {
 	  throw new Error('Deployment data transferred, but the final Live health check failed. Review the Bridge activity log and restore the safety snapshot if needed.');
 	}
-    notifyProgress(_event, 'Full site deployment completed successfully!', 100);
+    report(_event, 'Full site deployment completed successfully!', 100);
 
+    journal.finish(site.id, 'completed', 'Live deployment completed');
     return { ok: true, safetySnapshot: safetySnapshot.snapshot, liveFilesBackup: liveFilesBackup.file_key, db: dbResult, siteFiles: siteResult, maintenance };
     } catch (error) {
       throw new Error(`${error.message} Recovery artifacts on Live: database snapshot ${safetySnapshot.snapshot.key}; site-file ZIP ${liveFilesBackup.file_key}. File recovery is an overlay and does not remove new files.`);
     }
+    } catch (error) {
+      journal.finish(site.id, cancelledNow() ? 'cancelled' : 'failed', error.message);
+      throw error;
+    } finally { cancelled.delete(String(site.id)); }
   });
 
   ipcMain.handle('infinity-deploy:get-db-snapshots', async (_event, site, config) => {
@@ -535,6 +578,7 @@ function normalizeConfig(config, site) {
     liveUser: String(config.liveUser || '').trim(),
     livePassword: String(config.livePassword || '').replace(/\s/g, ''),
     themeSlug: String(config.themeSlug || 'rahul-graphics').toLowerCase().replace(/[^a-z0-9_-]/g, ''),
+    requestTimeoutMs: Math.min(1800000, Math.max(30000, Number(config.requestTimeoutMs) || 600000)),
   };
   if (!normalized.liveUrl || !normalized.liveUser || !normalized.livePassword) throw new Error('Live URL, username, and Application Password are required.');
   if (!normalized.localUser || !normalized.localPassword) throw new Error('Local username and Application Password are required for content export.');
@@ -697,7 +741,7 @@ function downloadPackageToFile(config, target, fileKey, destPath, onProgress, re
         Authorization: `Basic ${Buffer.from(`${auth.user}:${auth.password}`).toString('base64')}`,
         'User-Agent': `InfinityDeployLocal/${ADDON_VERSION}`,
       },
-      timeout: 600000, // 10 minutes
+      timeout: config.requestTimeoutMs || 600000,
       rejectUnauthorized: !isLocal,
     }, (res) => {
       if ([301, 302, 307, 308].includes(res.statusCode) && res.headers.location) {
@@ -790,7 +834,7 @@ function uploadFileStream(config, target, apiPath, filePath, fieldName, filename
         Authorization: `Basic ${Buffer.from(`${auth.user}:${auth.password}`).toString('base64')}`,
         'User-Agent': `InfinityDeployLocal/${ADDON_VERSION}`,
       },
-      timeout: 600000, // 10 minutes
+      timeout: config.requestTimeoutMs || 600000,
       rejectUnauthorized: !isLocal,
     }, (res) => {
       const chunks = [];
