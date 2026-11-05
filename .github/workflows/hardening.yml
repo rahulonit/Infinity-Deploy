@@ -56,3 +56,49 @@ jobs:
           unzip -l infinity-deploy-bridge.zip | grep -q 'class-infinity-deploy-transfer.php'
           unzip -t infinity-deploy-local-addon.zip
           unzip -t infinity-deploy-bridge.zip
+
+  wordpress-compatibility:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - wordpress: '6.2'
+            php: '8.1'
+          - wordpress: 'latest'
+            php: '8.3'
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: wp_test
+          MYSQL_USER: wp
+          MYSQL_PASSWORD: wp
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mysqli, zip
+      - name: Install WP-CLI
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar -o wp
+          chmod +x wp
+          sudo mv wp /usr/local/bin/wp
+      - name: Install isolated WordPress
+        run: |
+          mkdir -p /tmp/infinity-wp
+          wp core download --version="${{ matrix.wordpress }}" --path=/tmp/infinity-wp
+          wp config create --path=/tmp/infinity-wp --dbname=wp_test --dbuser=wp --dbpass=wp --dbhost=127.0.0.1:3306
+          wp core install --path=/tmp/infinity-wp --url=http://localhost:8080 --title=InfinitySmoke --admin_user=admin --admin_password=smoke-only-password --admin_email=smoke@example.invalid --skip-email
+          cp -a wordpress-plugin/infinity-deploy-bridge /tmp/infinity-wp/wp-content/plugins/
+          wp plugin activate infinity-deploy-bridge --path=/tmp/infinity-wp
+      - name: Exercise REST routes and transfer sessions
+        run: wp eval-file "$GITHUB_WORKSPACE/tests/wp-smoke.php" --path=/tmp/infinity-wp
