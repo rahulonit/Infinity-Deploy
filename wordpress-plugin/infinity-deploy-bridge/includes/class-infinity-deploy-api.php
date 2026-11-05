@@ -73,7 +73,7 @@ final class Infinity_Deploy_API {
 
 	public static function settings() {
 		return wp_parse_args( get_option( 'infinity_deploy_settings', array() ), array(
-			'enabled' => '1', 'allowed_themes' => 'rahul-graphics', 'content_types' => array( 'page', 'rg_product', 'rg_service', 'rg_testimonial' ), 'max_package_mb' => 200, 'retained_backups' => 5,
+			'enabled' => '1', 'allowed_themes' => 'rahul-graphics', 'content_types' => array( 'page', 'rg_product', 'rg_service', 'rg_testimonial' ), 'max_package_mb' => 200, 'retained_backups' => 5, 'critical_health_paths' => '/,/wp-json/',
 		) );
 	}
 
@@ -558,7 +558,11 @@ final class Infinity_Deploy_API {
 	private function health_check() {
 		$default_paths = array( '/', '/about/', '/contact/', '/products/', '/services/' );
 		$paths = (array) apply_filters( 'infinity_deploy_health_check_paths', $default_paths );
-		$critical_paths = (array) apply_filters( 'infinity_deploy_critical_health_check_paths', array( '/' ) );
+		$configured = array_filter( array_map( 'trim', explode( ',', (string) self::settings()['critical_health_paths'] ) ) );
+		$critical_paths = (array) apply_filters( 'infinity_deploy_critical_health_check_paths', $configured );
+		$critical_paths[] = '/';
+		$critical_paths = array_values( array_unique( array_filter( $critical_paths, function( $path ) { return is_string( $path ) && 0 === strpos( $path, '/' ) && 0 !== strpos( $path, '//' ); } ) ) );
+		$paths = array_values( array_unique( array_merge( $paths, $critical_paths ) ) );
 		$sslverify = (bool) apply_filters( 'infinity_deploy_health_check_sslverify', ! ( defined( 'WP_ENVIRONMENT_TYPE' ) && 'local' === WP_ENVIRONMENT_TYPE ) );
 		$checks = array();
 		$ok = true;
