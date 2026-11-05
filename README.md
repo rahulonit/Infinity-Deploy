@@ -6,8 +6,8 @@ Current components:
 
 | Component | Version | Source | Release archive |
 |---|---:|---|---|
-| Infinity Deploy Local add-on | 1.0.5 | `local-addon/` | `dist/infinity-deploy-local-addon.zip` |
-| Infinity Deploy Bridge | 1.0.3 | `wordpress-plugin/infinity-deploy-bridge/` | `dist/infinity-deploy-bridge.zip` |
+| Infinity Deploy Local add-on | 1.1.0 | `local-addon/` | `dist/infinity-deploy-local-addon.zip` |
+| Infinity Deploy Bridge | 1.0.4 | `wordpress-plugin/infinity-deploy-bridge/` | `dist/infinity-deploy-bridge.zip` |
 
 ## Capabilities
 
@@ -20,6 +20,9 @@ Current components:
 - Pushes a Local database and site files to Live after creating a mandatory Live database snapshot.
 - Rewrites domains, filesystem paths, table prefixes, and PHP-serialized data during database migration.
 - Keeps bounded deployment audit logs and retained theme/database backups.
+- Splits full-site upload packages into checksummed 4 MiB chunks, with retry from the server-reported offset.
+- Saves local operation checkpoints; exposes cooperative cancellation and configurable HTTP timeouts.
+- Supports configurable critical health-check paths (homepage and REST API by default).
 
 ## Requirements
 
@@ -40,7 +43,7 @@ Current components:
 5. Install `infinity-deploy-local-addon.zip` in Local and restart Local.
 6. Open the selected site’s **Tools/Utilities → Infinity Deploy**, enter both connections, and choose **Test both connections**.
 
-Do not enter a primary WordPress account password. Bridge 1.0.3 and later accepts Application Passwords only.
+Do not enter a primary WordPress account password. Bridge 1.0.3 and later accepts Application Passwords only. Full-site migration with Local add-on 1.1.0 requires Bridge 1.0.4 or later on both endpoints.
 
 ## Documentation
 
@@ -71,6 +74,7 @@ The build validates JavaScript, JSON, and PHP (when PHP CLI is available), stage
 - Selective sync adds or updates content; it does not propagate deletions.
 - Preserve Users/Customers is enabled by default. It keeps the destination `users` and `usermeta` tables instead of replacing them with the source tables.
 - Infinity Deploy snapshots are an additional recovery layer, not a replacement for a host-level backup.
+- Uploads can resume after recoverable request errors within a running operation, but full migration **does not automatically resume after restarting Local**; interrupted operations require manual assessment before retrying. Downloads currently restart on retry, and in-flight database imports cannot be aborted safely.
 
 ## License
 
