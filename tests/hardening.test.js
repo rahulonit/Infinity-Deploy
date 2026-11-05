@@ -68,9 +68,9 @@ test('legacy plaintext/base64 secrets are not decoded from saved config', () => 
 });
 
 test('full-site push gates file mutations on verified recovery points', () => {
-  const start = source.indexOf("ipcMain.handle('infinity-deploy:push-full-site'");
-  const end = source.indexOf("ipcMain.handle('infinity-deploy:get-db-snapshots'", start);
-  const flow = source.slice(start, end);
+  const fullSiteSource = fs.readFileSync(path.join(__dirname, '../local-addon/lib/full-site.js'), 'utf8');
+  const start = fullSiteSource.indexOf("ipcMain.handle('infinity-deploy:push-full-site'");
+  const flow = fullSiteSource.slice(start);
   const databaseBackup = flow.indexOf("'/db/snapshot'");
   const fileBackup = flow.indexOf("'/site/export', { components }");
   const fileMutation = flow.indexOf("'/site/import'");
