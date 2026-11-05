@@ -12,6 +12,7 @@ function infinityDeployRenderer(context) {
   function InfinityDeployPanel({ site }) {
     const [config, setConfig] = React.useState(null);
     const [busy, setBusy] = React.useState('');
+    const [lastOperation, setLastOperation] = React.useState(null);
     const [progress, setProgress] = React.useState(null);
     const [message, setMessage] = React.useState(null);
     const [preview, setPreview] = React.useState(null);
@@ -30,6 +31,7 @@ function infinityDeployRenderer(context) {
       let active = true;
       ipc.invoke('infinity-deploy:get-config', site).then((saved) => {
         if (active) setConfig(saved);
+        ipc.invoke('infinity-deploy:get-operation', site).then(op => { if (active) setLastOperation(op); }).catch(() => {});
       }).catch((error) => setMessage({ type: 'error', text: error.message }));
       return () => { active = false; };
     }, [site.id]);
@@ -62,6 +64,7 @@ function infinityDeployRenderer(context) {
         setMessage({ type: 'error', text: `${error.message}${error.code ? ` (${error.code})` : ''}` });
         return null;
       } finally {
+        ipc.invoke('infinity-deploy:get-operation', site).then(setLastOperation).catch(() => {});
         setBusy(''); setProgress(null);
       }
     };
@@ -147,6 +150,8 @@ function infinityDeployRenderer(context) {
           progress.message || 'Processing...'
         )
       ),
+      busy && (busy === 'push-full' || busy === 'clone-full') && h('button', { type: 'button', onClick: () => ipc.invoke('infinity-deploy:cancel-operation', site).then(() => setMessage({ type: 'info', text: 'Cancellation requested. The current network request or database import may finish before cancellation takes effect.' })) }, 'Cancel at next checkpoint'),
+      lastOperation && h('p', { className: 'infinity-deploy-help' }, `Last operation: ${lastOperation.kind} · ${lastOperation.status} · ${lastOperation.step || ''}. ${lastOperation.status === 'interrupted' ? 'Inspect both sites before retrying.' : ''}`),
       message && h('div', { className: `infinity-deploy-message is-${message.type}`, role: message.type === 'error' ? 'alert' : 'status' }, message.text),
       h('div', { className: 'infinity-deploy-columns' },
         h('div', { className: 'infinity-deploy-fields' },
@@ -158,7 +163,8 @@ function infinityDeployRenderer(context) {
           field('Live site URL', 'url', config.liveUrl, (value) => update('liveUrl', value), 'https://rahul.graphics'),
           field('Live WordPress username', 'text', config.liveUser, (value) => update('liveUser', value), 'e.g. rahulonit@gmail.com (your WP admin email)'),
           field('Live Application Password', 'password', config.livePassword, (value) => update('livePassword', value), 'xxxx xxxx xxxx xxxx'),
-          field('Theme slug', 'text', config.themeSlug, (value) => update('themeSlug', value), 'rahul-graphics')
+          field('Theme slug', 'text', config.themeSlug, (value) => update('themeSlug', value), 'rahul-graphics'),
+          field('Request timeout (seconds, 30–1800)', 'number', String(Math.round((config.requestTimeoutMs || 600000) / 1000)), (value) => update('requestTimeoutMs', Math.min(1800000, Math.max(30000, Number(value) * 1000 || 600000))), '600')
         ),
         h('div', { className: 'infinity-deploy-actions' },
           h('h4', null, 'Selective deployment'),
