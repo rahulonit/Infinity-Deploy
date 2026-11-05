@@ -9,6 +9,8 @@ trap 'rm -rf "$stage_dir"' EXIT
 node --check "$project_dir/local-addon/lib/main.js"
 node --check "$project_dir/local-addon/lib/renderer.js"
 node --check "$project_dir/local-addon/lib/reliability.js"
+node --check "$project_dir/local-addon/lib/full-site.js"
+node --check "$project_dir/local-addon/lib/deployment-models.js"
 node -e 'JSON.parse(fs.readFileSync(process.argv[1], "utf8"))' "$project_dir/local-addon/package.json"
 if command -v php >/dev/null 2>&1; then
   while IFS= read -r -d '' php_file; do
