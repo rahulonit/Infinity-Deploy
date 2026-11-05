@@ -46,6 +46,10 @@ function infinityDeployMain(context) {
   const store = new ConfigStore(path.join(userDataPath, 'infinity-deploy', 'connections.json'), safeStorage);
   const journal = new OperationJournal(path.join(userDataPath, 'infinity-deploy', 'operations'));
   const cancelled = new Set();
+  CHANNELS.forEach((channel) => {
+    try { ipcMain.removeHandler(channel); } catch (_) { /* Handler was not registered. */ }
+  });
+
   ipcMain.handle('infinity-deploy:get-operation', (_event, site) => {
     const record = journal.read(site.id);
     return record && record.status === 'running' ? { ...record, status: 'interrupted' } : record;
@@ -57,9 +61,6 @@ function infinityDeployMain(context) {
     return { ok: true, cooperative: true };
   });
 
-  CHANNELS.forEach((channel) => {
-    try { ipcMain.removeHandler(channel); } catch (_) { /* Handler was not registered. */ }
-  });
 
   ipcMain.handle('infinity-deploy:get-config', async (_event, site) => {
     const saved = store.get(site.id);
