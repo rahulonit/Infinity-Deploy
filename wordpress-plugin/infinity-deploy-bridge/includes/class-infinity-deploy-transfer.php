@@ -39,6 +39,22 @@ final class Infinity_Deploy_Transfer {
         if ( $size < 1 || $size > $max || ! preg_match( '/^[a-f0-9]{64}$/', $hash ) || ! preg_match( '/\\.(zip|sql|sql\\.gz)$/i', $filename ) ) {
             return new WP_Error( 'transfer_invalid', 'Invalid size, checksum or package filename.', array( 'status' => 400 ) );
         }
+        // Bound abandoned sessions to avoid exhausting wp-content storage.
+        $root = trailingslashit( Infinity_Deploy_Backups::directory() );
+        $active = 0;
+        foreach ( (array) glob( $root . 'transfer-*.json' ) as $entry ) {
+            $record = json_decode( (string) @file_get_contents( $entry ), true );
+            if ( ! is_array( $record ) ) { continue; }
+            if ( time() - (int) $record['created'] > self::TTL ) {
+                @unlink( substr( $entry, 0, -5 ) . '.part' );
+                @unlink( $entry );
+            } elseif ( (int) $record['user_id'] === get_current_user_id() ) {
+                $active++;
+            }
+        }
+        if ( $active >= 5 ) {
+            return new WP_Error( 'transfer_limit', 'Too many active transfers; finish or cancel existing sessions.', array( 'status' => 429 ) );
+        }
         $id = bin2hex( random_bytes( 16 ) );
         $paths = self::paths( $id );
         $meta = array( 'user_id' => get_current_user_id(), 'created' => time(), 'size' => $size, 'sha256' => $hash, 'filename' => $filename );
