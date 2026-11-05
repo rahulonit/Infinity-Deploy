@@ -17,6 +17,14 @@ All notable changes are documented here. Component versions are independent.
 - Added PHP 7.4 and 8.3 syntax checks and release ZIP/checksum verification in GitHub Actions.
 - Full-site operations now require Bridge 1.0.4+ on both Local and Live.
 
+### Phase 3 — UX and maintainability
+- Extracted full-site orchestration from the Electron entrypoint and isolated pure preflight/comparison models.
+- Added a deployment preflight dashboard covering connection, compatible Bridge versions, enablement, ZIP availability, free-space reporting, and endpoint scheme.
+- Added detailed UUID/hash content and media comparisons, and bounded site-file manifests (1,200 entries, SHA-256 for files up to 5 MiB) with explicit partial/unverified markers.
+- Added status-aware recovery guidance, operation checkpoint display, and an authenticated Live audit event viewer.
+- Updated Bridge audit records with event IDs, schema version 2, severity and a strict metadata allowlist.
+- Added Node model tests and WordPress smoke coverage for manifest and audit routes.
+
 ### Limitations
 - Resume occurs inside an active upload operation after transport errors. Restarting Local does not automatically resume a full-site deployment.
 - Package downloads, selective media, and theme uploads are not yet resumable.
