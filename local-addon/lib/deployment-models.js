@@ -32,14 +32,14 @@ function compareFiles(local, live) {
   const remote = new Map((live.files || []).map(f => [f.path, f]));
   const files = (local.files || []).map(item => {
     const other = remote.get(item.path);
-    let state = 'new';
+    let state = live.truncated ? 'unverified' : 'new';
     if (other) state = item.size !== other.size ? 'changed'
       : item.sha256 && other.sha256 ? (item.sha256 === other.sha256 ? 'unchanged' : 'changed') : 'unverified';
     remote.delete(item.path);
     return { path:item.path, size:item.size, remoteSize: other ? other.size : null, state };
   });
   // These are informational: overlay imports do not delete destination-only files.
-  for (const extra of remote.values()) files.push({path:extra.path,size:0,remoteSize:extra.size,state:'live-only'});
+  if (!local.truncated) for (const extra of remote.values()) files.push({path:extra.path,size:0,remoteSize:extra.size,state:'live-only'});
   return {files, partial:Boolean(local.truncated || live.truncated), scope:'Allowed wp-content files only; no deletions are propagated'};
 }
 
