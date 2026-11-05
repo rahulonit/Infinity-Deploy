@@ -46,6 +46,7 @@ final class Infinity_Deploy_Admin {
 			'content_types' => array_values( array_intersect( $available, array_map( 'sanitize_key', (array) ( $input['content_types'] ?? array() ) ) ) ),
 			'max_package_mb' => min( 2048, max( 1, absint( $input['max_package_mb'] ?? 200 ) ) ),
 			'retained_backups' => min( 20, max( 1, absint( $input['retained_backups'] ?? 5 ) ) ),
+			'critical_health_paths' => implode( ',', array_filter( array_map( function( $value ) { $value = trim( $value ); return preg_match( '#^/(?!/)[a-zA-Z0-9_./-]*$#', $value ) && false === strpos( $value, '..' ) ? $value : ''; }, explode( ',', (string) ( $input['critical_health_paths'] ?? '/,/wp-json/' ) ) ) ) ),
 		);
 	}
 
@@ -70,6 +71,7 @@ final class Infinity_Deploy_Admin {
 						<label><span><?php esc_html_e( 'Allowed theme slugs', 'infinity-deploy' ); ?></span><input class="regular-text" type="text" name="infinity_deploy_settings[allowed_themes]" value="<?php echo esc_attr( $settings['allowed_themes'] ); ?>"><small><?php esc_html_e( 'Comma-separated. Infinity Deploy rejects every other theme.', 'infinity-deploy' ); ?></small></label>
 						<fieldset><legend><?php esc_html_e( 'Content allowed to sync', 'infinity-deploy' ); ?></legend><?php foreach ( self::get_available_post_types() as $type => $label ) : ?><label class="infinity-check"><input type="checkbox" name="infinity_deploy_settings[content_types][]" value="<?php echo esc_attr( $type ); ?>" <?php checked( in_array( $type, (array) $settings['content_types'], true ) ); ?>><?php echo esc_html( $label ); ?></label><?php endforeach; ?></fieldset>
 						<div class="infinity-inline"><label><span><?php esc_html_e( 'Maximum uploaded package size (MB)', 'infinity-deploy' ); ?></span><input type="number" min="1" max="2048" name="infinity_deploy_settings[max_package_mb]" value="<?php echo esc_attr( $settings['max_package_mb'] ); ?>"></label><label><span><?php esc_html_e( 'Backups retained', 'infinity-deploy' ); ?></span><input type="number" min="1" max="20" name="infinity_deploy_settings[retained_backups]" value="<?php echo esc_attr( $settings['retained_backups'] ); ?>"></label></div>
+						<label><span><?php esc_html_e( 'Critical health paths (comma-separated)', 'infinity-deploy' ); ?></span><input class="regular-text" type="text" name="infinity_deploy_settings[critical_health_paths]" value="<?php echo esc_attr( $settings['critical_health_paths'] ?? '/,/wp-json/' ); ?>"><small><?php esc_html_e( 'Failures on these relative paths mark deployments unhealthy. Root / is always checked.', 'infinity-deploy' ); ?></small></label>
 						<?php submit_button( __( 'Save bridge settings', 'infinity-deploy' ) ); ?>
 					</form>
 				</section>

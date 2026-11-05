@@ -1,0 +1,106 @@
+name: Hardening checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  node-hardening:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: JavaScript syntax
+        run: |
+          node --check local-addon/lib/main.js
+          node --check local-addon/lib/renderer.js
+          node --check local-addon/lib/reliability.js
+          node --check local-addon/lib/full-site.js
+          node --check local-addon/lib/deployment-models.js
+      - name: Hardening tests
+        run: node --test tests/*.test.js
+
+  php-lint:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php: ['7.4', '8.3']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+      - name: PHP syntax checks
+        run: find wordpress-plugin/infinity-deploy-bridge -name '*.php' -print0 | xargs -0 -n1 php -l
+
+  release-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+      - name: Install build utilities
+        run: sudo apt-get update && sudo apt-get install -y rsync zip unzip
+      - name: Build archives
+        run: ./build.sh
+      - name: Verify release contents and checksums
+        run: |
+          cd dist
+          sha256sum -c SHA256SUMS
+          unzip -l infinity-deploy-local-addon.zip | grep -q 'lib/reliability.js'
+          unzip -l infinity-deploy-bridge.zip | grep -q 'class-infinity-deploy-transfer.php'
+          unzip -t infinity-deploy-local-addon.zip
+          unzip -t infinity-deploy-bridge.zip
+
+  wordpress-compatibility:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - wordpress: '6.2'
+            php: '8.1'
+          - wordpress: 'latest'
+            php: '8.3'
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: wp_test
+          MYSQL_USER: wp
+          MYSQL_PASSWORD: wp
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mysqli, zip
+      - name: Install WP-CLI
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar -o wp
+          chmod +x wp
+          sudo mv wp /usr/local/bin/wp
+      - name: Install isolated WordPress
+        run: |
+          mkdir -p /tmp/infinity-wp
+          wp core download --version="${{ matrix.wordpress }}" --path=/tmp/infinity-wp
+          wp config create --path=/tmp/infinity-wp --dbname=wp_test --dbuser=wp --dbpass=wp --dbhost=127.0.0.1:3306
+          wp core install --path=/tmp/infinity-wp --url=http://localhost:8080 --title=InfinitySmoke --admin_user=admin --admin_password=smoke-only-password --admin_email=smoke@example.invalid --skip-email
+          cp -a wordpress-plugin/infinity-deploy-bridge /tmp/infinity-wp/wp-content/plugins/
+          wp plugin activate infinity-deploy-bridge --path=/tmp/infinity-wp
+      - name: Exercise REST routes and transfer sessions
+        run: wp eval-file "$GITHUB_WORKSPACE/tests/wp-smoke.php" --path=/tmp/infinity-wp
