@@ -2,7 +2,7 @@
 
 All notable changes are documented here. Component versions are independent.
 
-## Bridge 1.0.3 / Local add-on 1.0.4 — 2026-10-09
+## Bridge 1.0.3 / Local add-on 1.0.5 — 2026-10-09
 
 ### Security and reliability
 
@@ -15,6 +15,8 @@ All notable changes are documented here. Component versions are independent.
 - Full clone now reports component failures instead of displaying unconditional success.
 - Full clone/push now report failed final critical health checks.
 - Clarified in the Local UI that themes are always included in full migrations.
+- Blocks full migrations unless both endpoints run Bridge 1.0.3 or later and have deployments enabled.
+- Displays both Bridge versions in the connection result so mismatches are visible before deployment.
 
 ### Documentation
 

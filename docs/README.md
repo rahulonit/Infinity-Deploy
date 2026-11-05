@@ -1,6 +1,6 @@
 # Infinity Deploy documentation
 
-This documentation covers Infinity Deploy Local add-on 1.0.4 and Infinity Deploy Bridge 1.0.3.
+This documentation covers Infinity Deploy Local add-on 1.0.5 and Infinity Deploy Bridge 1.0.3.
 
 ## Audience map
 

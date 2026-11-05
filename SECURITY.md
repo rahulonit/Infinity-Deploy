@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Security fixes are provided for the latest published Bridge and Local add-on pair. At the time of this source release, that is Bridge 1.0.3 and Local add-on 1.0.4.
+Security fixes are provided for the latest published Bridge and Local add-on pair. At the time of this source release, that is Bridge 1.0.3 and Local add-on 1.0.5.
 
 ## Reporting a vulnerability
 

@@ -5,7 +5,7 @@
 Infinity Deploy ships two independently versioned artifacts:
 
 - `infinity-deploy-bridge.zip`: WordPress plugin, currently 1.0.3.
-- `infinity-deploy-local-addon.zip`: Local add-on, currently 1.0.4.
+- `infinity-deploy-local-addon.zip`: Local add-on, currently 1.0.5.
 
 Publish them together and state compatible versions in every release. A Bridge should be updated on both Local and Live before relying on a newly documented behavior.
 

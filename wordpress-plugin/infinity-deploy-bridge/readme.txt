@@ -50,7 +50,7 @@ The plugin does not contact an external service and contains no telemetry. It co
 2. Open Tools > Infinity Deploy on each site.
 3. Enable authenticated deployments and configure allowed themes, content types, package size, and retained backups.
 4. Create a dedicated Application Password in the deployment user's WordPress profile on each site.
-5. Install Infinity Deploy Local add-on 1.0.4 or later in Local.
+5. Install Infinity Deploy Local add-on 1.0.5 or later in Local.
 6. Enter both URLs, usernames, Application Passwords, and the theme slug in Local's Infinity Deploy panel.
 7. Test both connections before any deployment.
 

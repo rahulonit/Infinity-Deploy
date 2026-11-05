@@ -6,7 +6,7 @@ Current components:
 
 | Component | Version | Source | Release archive |
 |---|---:|---|---|
-| Infinity Deploy Local add-on | 1.0.4 | `local-addon/` | `dist/infinity-deploy-local-addon.zip` |
+| Infinity Deploy Local add-on | 1.0.5 | `local-addon/` | `dist/infinity-deploy-local-addon.zip` |
 | Infinity Deploy Bridge | 1.0.3 | `wordpress-plugin/infinity-deploy-bridge/` | `dist/infinity-deploy-bridge.zip` |
 
 ## Capabilities
