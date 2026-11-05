@@ -284,7 +284,7 @@ function infinityDeployMain(context) {
     journal.begin(site.id, 'clone');
     const cancelledNow = () => cancelled.has(String(site.id));
     const report = (event, message, percent) => {
-      if (cancelledNow()) throw new Error('Operation cancelled at a safe checkpoint. Some earlier changes may already be applied.');
+      if (percent < 100 && cancelledNow()) throw new Error('Operation cancelled at a safe checkpoint. Some earlier changes may already be applied.');
       journal.progress(site.id, message, percent);
       notifyProgress(event, message, percent);
     };
@@ -390,7 +390,7 @@ function infinityDeployMain(context) {
     journal.begin(site.id, 'push');
     const cancelledNow = () => cancelled.has(String(site.id));
     const report = (event, message, percent) => {
-      if (cancelledNow()) throw new Error('Operation cancelled at a safe checkpoint. Some earlier changes may already be applied.');
+      if (percent < 100 && cancelledNow()) throw new Error('Operation cancelled at a safe checkpoint. Some earlier changes may already be applied.');
       journal.progress(site.id, message, percent);
       notifyProgress(event, message, percent);
     };
