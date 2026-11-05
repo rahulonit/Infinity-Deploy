@@ -92,6 +92,7 @@ final class Infinity_Deploy_API {
 			'/db/restore' => array( 'POST', 'restore_db_snapshot', 'can_deploy' ),
 			'/db/snapshots' => array( 'GET', 'list_db_snapshots', 'can_read' ),
 			'/site/export' => array( 'POST', 'export_site_pack', 'can_deploy' ),
+			'/site/manifest' => array( 'POST', 'site_manifest', 'can_deploy' ),
 			'/site/import' => array( 'POST', 'import_site_pack', 'can_deploy' ),
 			'/package/download' => array( 'GET', 'download_package', 'can_deploy' ),
 			'/package/cleanup' => array( 'POST', 'cleanup_package', 'can_deploy' ),
@@ -133,6 +134,7 @@ final class Infinity_Deploy_API {
 			'content_types' => Infinity_Deploy_Content::allowed_types(),
 			'permalink_structure' => get_option( 'permalink_structure' ),
 			'zip_available' => class_exists( 'ZipArchive' ),
+			'free_disk_bytes' => ( is_int( @disk_free_space( WP_CONTENT_DIR ) ) || is_float( @disk_free_space( WP_CONTENT_DIR ) ) ) ? (float) @disk_free_space( WP_CONTENT_DIR ) : null,
 			'max_package_mb' => absint( self::settings()['max_package_mb'] ),
 			'backups' => Infinity_Deploy_Backups::list_backups(),
 			'db_snapshots' => Infinity_Deploy_Safety::list_snapshots(),
@@ -367,6 +369,10 @@ final class Infinity_Deploy_API {
 
 	public function list_db_snapshots() {
 		return rest_ensure_response( array( 'ok' => true, 'snapshots' => Infinity_Deploy_Safety::list_snapshots() ) );
+	}
+
+	public function site_manifest( WP_REST_Request $request ) {
+		return rest_ensure_response( Infinity_Deploy_File_Manifest::build( $request->get_param( 'components' ) ) );
 	}
 
 	public function export_site_pack( WP_REST_Request $request ) {
