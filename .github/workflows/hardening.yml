@@ -17,15 +17,42 @@ jobs:
         run: |
           node --check local-addon/lib/main.js
           node --check local-addon/lib/renderer.js
+          node --check local-addon/lib/reliability.js
       - name: Hardening tests
         run: node --test tests/*.test.js
 
   php-lint:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php: ['7.4', '8.3']
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '7.4'
+          php-version: ${{ matrix.php }}
       - name: PHP syntax checks
         run: find wordpress-plugin/infinity-deploy-bridge -name '*.php' -print0 | xargs -0 -n1 php -l
+
+  release-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+      - name: Install build utilities
+        run: sudo apt-get update && sudo apt-get install -y rsync zip unzip
+      - name: Build archives
+        run: ./build.sh
+      - name: Verify release contents and checksums
+        run: |
+          cd dist
+          sha256sum -c SHA256SUMS
+          unzip -l infinity-deploy-local-addon.zip | grep -q 'lib/reliability.js'
+          unzip -l infinity-deploy-bridge.zip | grep -q 'class-infinity-deploy-transfer.php'
+          unzip -t infinity-deploy-local-addon.zip
+          unzip -t infinity-deploy-bridge.zip
